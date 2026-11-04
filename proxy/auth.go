@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/x6nux/he-ipv6-pool/tunnel"
+	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
 const dialTimeout = 30 * time.Second

@@ -1,7 +1,18 @@
 # he-ipv6-pool
 
-[![release](https://github.com/x6nux/he-ipv6-pool/actions/workflows/release.yml/badge.svg)](https://github.com/x6nux/he-ipv6-pool/actions/workflows/release.yml)
+[![release](https://github.com/wsyqhh/he-ipv6-pool/actions/workflows/release.yml/badge.svg)](https://github.com/wsyqhh/he-ipv6-pool/actions/workflows/release.yml)
 [![license](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+
+> **关于本仓库**
+>
+> 这是 [x6nux/he-ipv6-pool](https://gitlab.com/x6nux/he-ipv6-pool) 的复刻版本（上游 GitHub 仓库已不存在，原始代码来自 GitLab），
+> 仅做了以下改动，用于自己构建并发布 Docker 镜像：
+>
+> - 模块路径、下载地址、镜像地址改为本仓库（`github.com/wsyqhh/he-ipv6-pool`、`ghcr.io/wsyqhh/he-ipv6-pool`）
+> - 发版工作流增加一步，把 GHCR 包自动设为公开
+>
+> 代码版权归原作者所有，遵循 GPL-3.0。上游 README 中的下载链接与镜像地址**全部失效**，请使用本仓库的 Releases 和镜像。
+
 
 把一条免费的 [Hurricane Electric](https://tunnelbroker.net) IPv6 隧道变成 **IPv6 代理池**：用 HE 分配的 Routed /64、/48 里的**任意地址**作为出口，一个 /48 就有 2^80 个可用 IP。
 
@@ -45,7 +56,7 @@
 
 ```bash
 ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
-curl -fLo /tmp/he-ipv6-pool https://github.com/x6nux/he-ipv6-pool/releases/latest/download/he-ipv6-pool-linux-$ARCH
+curl -fLo /tmp/he-ipv6-pool https://github.com/wsyqhh/he-ipv6-pool/releases/latest/download/he-ipv6-pool-linux-$ARCH
 chmod +x /tmp/he-ipv6-pool
 sudo /tmp/he-ipv6-pool install -server <Server IPv4> -prefix <Routed /64>,<Routed /48>
 ```
@@ -67,12 +78,12 @@ sudo /tmp/he-ipv6-pool install -server <Server IPv4> -prefix <Routed /64>,<Route
 
 ### 或者用 Docker Compose
 
-镜像发布在 `ghcr.io/x6nux/he-ipv6-pool`（linux/amd64、linux/arm64，压缩后约 4MB），全部配置通过环境变量传入：
+镜像发布在 `ghcr.io/wsyqhh/he-ipv6-pool`（linux/amd64、linux/arm64，压缩后约 4MB），全部配置通过环境变量传入：
 
 ```bash
 mkdir he-ipv6-pool && cd he-ipv6-pool
-curl -fLO https://raw.githubusercontent.com/x6nux/he-ipv6-pool/main/compose.yaml
-curl -fL https://raw.githubusercontent.com/x6nux/he-ipv6-pool/main/.env.example -o .env
+curl -fLO https://raw.githubusercontent.com/wsyqhh/he-ipv6-pool/main/compose.yaml
+curl -fL https://raw.githubusercontent.com/wsyqhh/he-ipv6-pool/main/.env.example -o .env
 vi .env              # 填写 HE_SERVER、HE_PREFIXES、PROXY_LISTEN、PROXY_USER、PROXY_PASS
 docker compose up -d
 ```
@@ -125,11 +136,11 @@ sudo setcap cap_net_raw+ep ./he-ipv6-pool   # Linux；macOS 直接用 sudo 运�
 ## 5. 作为 Go 库使用
 
 ```bash
-go get github.com/x6nux/he-ipv6-pool
+go get github.com/wsyqhh/he-ipv6-pool
 ```
 
 ```go
-import "github.com/x6nux/he-ipv6-pool/tunnel"
+import "github.com/wsyqhh/he-ipv6-pool/tunnel"
 
 t, err := tunnel.New(tunnel.Config{
 	ServerIPv4: netip.MustParseAddr("216.66.80.26"),
@@ -173,15 +184,15 @@ client := &http.Client{Transport: &http.Transport{
 需要 Go 1.25.5 或更新的 1.25.x：
 
 ```bash
-go install github.com/x6nux/he-ipv6-pool@latest
+go install github.com/wsyqhh/he-ipv6-pool@latest
 # 或者
-git clone https://github.com/x6nux/he-ipv6-pool && cd he-ipv6-pool
+git clone https://github.com/wsyqhh/he-ipv6-pool && cd he-ipv6-pool
 CGO_ENABLED=0 go build -o he-ipv6-pool .
 ```
 
 ## 发版
 
-GitHub Actions 会运行测试，编译 Linux（amd64/arm64/arm/386/riscv64）和 macOS（amd64/arm64）的二进制，连同 `SHA256SUMS` 发布到 [Releases](https://github.com/x6nux/he-ipv6-pool/releases)：
+GitHub Actions 会运行测试，编译 Linux（amd64/arm64/arm/386/riscv64）和 macOS（amd64/arm64）的二进制，连同 `SHA256SUMS` 发布到 [Releases](https://github.com/wsyqhh/he-ipv6-pool/releases)：
 
 ```bash
 gh workflow run release.yml -f version=v0.1.0   # 在 main 最新提交上打标签并发布，也可以在 Actions 页面点 Run workflow

@@ -120,7 +120,7 @@ journalctl -u he-ipv6-pool -f      # 日志
 
 ### 1.8 Docker
 
-镜像 `ghcr.io/x6nux/he-ipv6-pool`，支持 linux/amd64 和 linux/arm64，基于 `scratch`，里面只有一个静态二进制。推荐用[环境变量](#21-环境变量)配置；也可以把配置文件挂载到 `/etc/he-ipv6-pool/config.json`（默认命令是 `-c /etc/he-ipv6-pool/config.json`），两者同时使用时环境变量优先。
+镜像 `ghcr.io/wsyqhh/he-ipv6-pool`，支持 linux/amd64 和 linux/arm64，基于 `scratch`，里面只有一个静态二进制。推荐用[环境变量](#21-环境变量)配置；也可以把配置文件挂载到 `/etc/he-ipv6-pool/config.json`（默认命令是 `-c /etc/he-ipv6-pool/config.json`），两者同时使用时环境变量优先。
 
 | 镜像标签 | 说明 |
 |---|---|
@@ -132,8 +132,8 @@ journalctl -u he-ipv6-pool -f      # 日志
 **Docker Compose**（推荐）：仓库里的 [`compose.yaml`](../compose.yaml) 已经写好了下面这些参数，配置从同目录的 `.env` 读取，模板是 [`.env.example`](../.env.example)：
 
 ```bash
-curl -fLO https://raw.githubusercontent.com/x6nux/he-ipv6-pool/main/compose.yaml
-curl -fL https://raw.githubusercontent.com/x6nux/he-ipv6-pool/main/.env.example -o .env
+curl -fLO https://raw.githubusercontent.com/wsyqhh/he-ipv6-pool/main/compose.yaml
+curl -fL https://raw.githubusercontent.com/wsyqhh/he-ipv6-pool/main/.env.example -o .env
 vi .env                       # 必填项留空时 docker compose 会报错并提示要填什么
 docker compose up -d
 docker compose logs -f        # 日志
@@ -148,9 +148,9 @@ docker compose pull && docker compose up -d   # 升级
 docker run -d --name he-ipv6-pool --restart unless-stopped \
   --network host --cap-drop ALL --cap-add NET_RAW --read-only \
   --env-file .env \
-  ghcr.io/x6nux/he-ipv6-pool:latest
+  ghcr.io/wsyqhh/he-ipv6-pool:latest
 
-docker run --rm ghcr.io/x6nux/he-ipv6-pool:latest -version
+docker run --rm ghcr.io/wsyqhh/he-ipv6-pool:latest -version
 ```
 
 | 参数 | 作用 |
@@ -463,14 +463,14 @@ SOCKS=127.0.0.1:<端口> PROXY_USER=<用户名> PROXY_PASS=<密码> ./check-pref
 | `he-ipv6-pool-darwin-amd64` / `-arm64` | macOS（只能前台运行，没有管理命令；还没有在真实隧道上验证过） |
 | `SHA256SUMS` | 校验和 |
 
-同时会构建 linux/amd64 和 linux/arm64 的 Docker 镜像推送到 `ghcr.io/x6nux/he-ipv6-pool`，镜像标签见 [1.8](#18-docker)；镜像任务在测试和版本号校验通过后才会运行。
+同时会构建 linux/amd64 和 linux/arm64 的 Docker 镜像推送到 `ghcr.io/wsyqhh/he-ipv6-pool`，镜像标签见 [1.8](#18-docker)；镜像任务在测试和版本号校验通过后才会运行。
 
 二进制是静态编译的（`CGO_ENABLED=0`）。`he-ipv6-pool -version` 显示版本，`install` 和 `config` 打印的信息里也有版本：
 
 | 构建方式 | `-version` 显示 |
 |---|---|
 | Release 下载 | 标签名，例如 `v0.1.0` |
-| `go install github.com/x6nux/he-ipv6-pool@v0.1.0` | 模块版本 `v0.1.0` |
+| `go install github.com/wsyqhh/he-ipv6-pool@v0.1.0` | 模块版本 `v0.1.0` |
 | 从源码 `go build` | 提交时间和提交号，例如 `v0.0.0-20261022085723-8dd9972282ed`，有未提交的改动时带 `+dirty` |
 
 升级已安装的服务：下载新版本后执行 `sudo ./he-ipv6-pool install`，配置会保留。

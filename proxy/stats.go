@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/x6nux/he-ipv6-pool/tunnel"
+	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
 // failKind 是请求结果的分类，统计、日志和 SOCKS5 应答码共用。

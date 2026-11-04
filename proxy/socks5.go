@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/x6nux/he-ipv6-pool/tunnel"
+	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
 // SOCKS5 常量（RFC 1928）。

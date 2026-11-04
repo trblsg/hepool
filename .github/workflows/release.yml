@@ -91,3 +91,17 @@ jobs:
           build-args: VERSION=${{ env.TAG }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      # GHCR 新建的包默认私有。用 API 把包改成公开，失败不影响发布（可到 Package settings 手动改）
+      - name: make package public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pkg="${GITHUB_REPOSITORY#*/}"
+          for i in 1 2 3 4 5; do
+            if gh api --method PATCH "/user/packages/container/${pkg%/}" -f visibility=public >/dev/null 2>&1; then
+              echo "已将 ${pkg} 设为公开"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::无法自动设为公开，请到 https://github.com/users/${GITHUB_REPOSITORY_OWNER}/packages/container/${pkg%/}/settings 手动修改"

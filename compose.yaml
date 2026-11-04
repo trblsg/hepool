@@ -2,7 +2,7 @@
 # 宿主机防火墙要放行来自 HE_SERVER 的协议 41 和 PROXY_LISTEN 的 TCP 端口（容器里没有 install 命令）
 services:
   he-ipv6-pool:
-    image: ghcr.io/x6nux/he-ipv6-pool:${IMAGE_TAG:-latest}
+    image: ghcr.io/wsyqhh/he-ipv6-pool:${IMAGE_TAG:-latest}
     container_name: he-ipv6-pool
     restart: unless-stopped
     # 必需：协议 41 没有端口，经过 Docker 的 NAT 会因为 conntrack 冲突丢包

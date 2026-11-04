@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/x6nux/he-ipv6-pool/proxy"
-	"github.com/x6nux/he-ipv6-pool/tunnel"
+	"github.com/wsyqhh/he-ipv6-pool/proxy"
+	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
 // version 由发布流程通过 -ldflags "-X main.version=<tag>" 注入；为空时用 Go 的构建信息，

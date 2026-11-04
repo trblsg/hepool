@@ -10,7 +10,7 @@ import (
 	"net/netip"
 	"sync/atomic"
 
-	"github.com/x6nux/he-ipv6-pool/tunnel"
+	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
 // ServeHTTP 实现 HTTP 代理：CONNECT 隧道，以及 absolute-URI 形式的普通 http:// 请求转发。

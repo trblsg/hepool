@@ -1,4 +1,4 @@
-module github.com/x6nux/he-ipv6-pool
+module github.com/wsyqhh/he-ipv6-pool
 
 go 1.25.5
 

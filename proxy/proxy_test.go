@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/x6nux/he-ipv6-pool/tunnel"
+	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
 var remoteAddr = netip.MustParseAddr("2001:db8:ffff::1")
