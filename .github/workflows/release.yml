@@ -1,4 +1,4 @@
-# Kiểm thử, biên dịch chéo và phát hành lên GitHub Release, đồng thời đẩy image Docker đa kiến trúc lên ghcr.io. Hai cách phát hành:
+# Kiểm thử, biên dịch chéo và phát hành lên GitHub Release. Phần đẩy image Docker lên ghcr.io đang tạm tắt để kiểm thử build. Hai cách phát hành:
 #   1. Đẩy tag: git tag v0.1.0 && git push origin v0.1.0
 #   2. Kích hoạt thủ công: trang Actions chọn release → Run workflow → điền số phiên bản; hoặc gh workflow run release.yml -f version=v0.1.0
 #      sẽ tạo tag trên commit mới nhất của nhánh đã chọn
@@ -57,51 +57,55 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  # Phát hành image đặt trong cùng workflow: khi kích hoạt thủ công, tag do GITHUB_TOKEN tạo sẽ không kích hoạt workflow khác;
-  # needs đảm bảo chỉ đẩy sau khi kiểm thử đạt và xác thực số phiên bản đạt
-  docker:
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository }}
-          flavor: latest=false
-          # v1.2.3 → 1.2.3, 1.2; bản chính thức gắn thêm latest, bản tiền phát hành chỉ gắn số phiên bản đầy đủ
-          tags: |
-            type=semver,pattern={{version}},value=${{ env.TAG }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
-            type=raw,value=latest,enable=${{ !contains(env.TAG, '-') }}
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: VERSION=${{ env.TAG }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-      # Gói mới tạo trên GHCR mặc định là riêng tư. Dùng API để đổi gói thành công khai, thất bại không ảnh hưởng phát hành (có thể đổi thủ công trong Package settings)
-      - name: make package public
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pkg="${GITHUB_REPOSITORY#*/}"
-          for i in 1 2 3 4 5; do
-            if gh api --method PATCH "/user/packages/container/${pkg%/}" -f visibility=public >/dev/null 2>&1; then
-              echo "Đã đặt ${pkg} thành công khai"; exit 0
-            fi
-            sleep 5
-          done
-          echo "::warning::Không thể tự động đặt thành công khai, vui lòng vào https://github.com/users/${GITHUB_REPOSITORY_OWNER}/packages/container/${pkg%/}/settings để sửa thủ công"
+  # ---------------------------------------------------------------------------
+  # TẠM THỜI TẮT: job phát hành Docker image.
+  # Để bật lại, bỏ dấu "# " ở đầu mỗi dòng trong khối bên dưới.
+  # ---------------------------------------------------------------------------
+  # # Phát hành image đặt trong cùng workflow: khi kích hoạt thủ công, tag do GITHUB_TOKEN tạo sẽ không kích hoạt workflow khác;
+  # # needs đảm bảo chỉ đẩy sau khi kiểm thử đạt và xác thực số phiên bản đạt
+  # docker:
+  #   needs: release
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     packages: write
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #     - uses: docker/setup-buildx-action@v4
+  #     - uses: docker/login-action@v4
+  #       with:
+  #         registry: ghcr.io
+  #         username: ${{ github.actor }}
+  #         password: ${{ github.token }}
+  #     - id: meta
+  #       uses: docker/metadata-action@v6
+  #       with:
+  #         images: ghcr.io/${{ github.repository }}
+  #         flavor: latest=false
+  #         # v1.2.3 → 1.2.3, 1.2; bản chính thức gắn thêm latest, bản tiền phát hành chỉ gắn số phiên bản đầy đủ
+  #         tags: |
+  #           type=semver,pattern={{version}},value=${{ env.TAG }}
+  #           type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
+  #           type=raw,value=latest,enable=${{ !contains(env.TAG, '-') }}
+  #     - uses: docker/build-push-action@v7
+  #       with:
+  #         context: .
+  #         platforms: linux/amd64,linux/arm64
+  #         push: true
+  #         build-args: VERSION=${{ env.TAG }}
+  #         tags: ${{ steps.meta.outputs.tags }}
+  #         labels: ${{ steps.meta.outputs.labels }}
+  #     # Gói mới tạo trên GHCR mặc định là riêng tư. Dùng API để đổi gói thành công khai, thất bại không ảnh hưởng phát hành (có thể đổi thủ công trong Package settings)
+  #     - name: make package public
+  #       continue-on-error: true
+  #       env:
+  #         GH_TOKEN: ${{ github.token }}
+  #       run: |
+  #         pkg="${GITHUB_REPOSITORY#*/}"
+  #         for i in 1 2 3 4 5; do
+  #           if gh api --method PATCH "/user/packages/container/${pkg%/}" -f visibility=public >/dev/null 2>&1; then
+  #             echo "Đã đặt ${pkg} thành công khai"; exit 0
+  #           fi
+  #           sleep 5
+  #         done
+  #         echo "::warning::Không thể tự động đặt thành công khai, vui lòng vào https://github.com/users/${GITHUB_REPOSITORY_OWNER}/packages/container/${pkg%/}/settings để sửa thủ công"
