@@ -69,7 +69,7 @@ Lệnh quản trị chỉ duy trì một người dùng: chỉ cung cấp `-user
 
 ### 1.3 install
 
-Chỉ hỗ trợ Linux + systemd, cần root. Thực hiện lần lượt:
+Chỉ hỗ trợ Linux + systemd, cần root. Void Linux dùng runit không có systemd nên phải cài thủ công theo [hướng dẫn trong README](../README.md#void-linux-runit). Thực hiện lần lượt:
 
 1. Đọc `/opt/he-ipv6-pool/config.json` hiện có (nếu có), ghi đè bằng tùy chọn dòng lệnh, bổ sung giá trị mặc định và kiểm tra hợp lệ
 2. Tạo người dùng và nhóm hệ thống `hepool` (không thể đăng nhập, không có thư mục home)
@@ -463,7 +463,7 @@ SOCKS=127.0.0.1:<cổng> PROXY_USER=<tên-người-dùng> PROXY_PASS=<mật-kh�
 | `he-ipv6-pool-darwin-amd64` / `-arm64` | macOS (chỉ chạy trực tiếp, không có lệnh quản trị; chưa được kiểm chứng trên tunnel thật) |
 | `SHA256SUMS` | Mã kiểm tra |
 
-Đồng thời build Docker image linux/amd64 và linux/arm64 đẩy lên `ghcr.io/wsyqhh/he-ipv6-pool`, thẻ image xem [1.8](#18-docker); tác vụ image chỉ chạy sau khi test và kiểm tra số phiên bản đạt.
+Job Docker (build image linux/amd64 và linux/arm64 đẩy lên `ghcr.io/wsyqhh/he-ipv6-pool`, thẻ image xem [1.8](#18-docker)) đang tạm tắt trong workflow để kiểm thử build; khi bật lại, job này chỉ chạy sau khi test và kiểm tra số phiên bản đạt.
 
 Binary được biên dịch tĩnh (`CGO_ENABLED=0`). `he-ipv6-pool -version` hiển thị phiên bản, thông tin in bởi `install` và `config` cũng có phiên bản:
 

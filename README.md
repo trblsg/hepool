@@ -19,7 +19,7 @@ Biến một tunnel IPv6 [Hurricane Electric](https://tunnelbroker.net) miễn p
 - **Không tạo card mạng**: không cần sit/gif/TUN, không sửa bảng định tuyến, không ảnh hưởng mạng của chính máy chủ. Toàn bộ ngăn xếp giao thức IPv6 chạy trong không gian người dùng
 - **SOCKS5 + HTTP cùng cổng**: SOCKS5 (gồm UDP) và HTTP proxy (gồm CONNECT) dùng chung một cổng, tự động nhận diện
 - **Tên người dùng điều khiển đầu ra**: ngẫu nhiên mỗi lần, hoặc cố định theo phiên, đặt thời gian sống, luân chuyển theo /64, cũng có thể chỉ định địa chỉ cụ thể
-- **Triển khai bằng một lệnh**: `install` sẽ cấu hình dịch vụ systemd (chỉ cấp `CAP_NET_RAW`) và iptables, tự động tạo cổng và mật khẩu ngẫu nhiên
+- **Triển khai bằng một lệnh**: trên hệ thống dùng systemd, `install` sẽ cấu hình dịch vụ (chỉ cấp `CAP_NET_RAW`) và iptables, tự động tạo cổng và mật khẩu ngẫu nhiên; Void Linux dùng runit có hướng dẫn cài thủ công bên dưới
 - Hỗ trợ Linux (gồm máy chủ cloud dùng 1:1 NAT), cũng có thể dùng như thư viện Go; macOS có thể biên dịch và chạy nhưng chưa được kiểm chứng trên tunnel thật
 
 ```
@@ -52,7 +52,9 @@ Máy khách ─SOCKS5/HTTP─→ he-ipv6-pool (ngăn xếp giao thức không gi
 
 Trang tạo sẽ liệt kê IPv4 của từng máy chủ tunnel, có thể `ping` thử trên máy chủ để so sánh độ trễ trước.
 
-## 2. Cài đặt (Linux + systemd)
+## 2. Cài đặt (Linux)
+
+### Linux + systemd
 
 ```bash
 ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
@@ -75,6 +77,110 @@ Nâng cấp lên phiên bản mới: tải xuống theo cách tương tự, rồ
 | `uninstall` | Xóa dịch vụ, thư mục cài đặt, người dùng và quy tắc iptables tương ứng |
 
 Tùy chọn: `-server`, `-prefix` (nhiều tiền tố phân tách bằng dấu phẩy), `-local`, `-mtu`, `-listen`, `-user`, `-pass`, chi tiết xem `install -h` hoặc [tham khảo tham số](docs/reference.md#12-tùy-chọn-của-install--config).
+
+### Void Linux (runit)
+
+Void Linux dùng runit thay vì systemd nên lệnh `install` không hoạt động (lệnh này ghi unit systemd và gọi `systemctl`). Cài thủ công theo các bước sau.
+
+**1. Cài gói cần thiết** (`iptables` thường có sẵn, lệnh dưới đây cài thêm nếu thiếu):
+
+```bash
+sudo xbps-install -Sy curl libcap-progs iptables
+```
+
+**2. Tạo người dùng, cài binary và cấp `CAP_NET_RAW`:**
+
+```bash
+ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/; s/armv7l/arm/; s/i686/386/; s/riscv64/riscv64/')
+curl -fLo /tmp/he-ipv6-pool https://github.com/wsyqhh/he-ipv6-pool/releases/latest/download/he-ipv6-pool-linux-$ARCH
+chmod +x /tmp/he-ipv6-pool
+
+id -u hepool >/dev/null 2>&1 || sudo useradd --system --user-group --no-create-home --shell /usr/bin/nologin hepool
+sudo install -d -m 755 /opt/he-ipv6-pool
+sudo install -m 755 /tmp/he-ipv6-pool /opt/he-ipv6-pool/he-ipv6-pool
+sudo setcap cap_net_raw+ep /opt/he-ipv6-pool/he-ipv6-pool
+```
+
+**3. Tạo `config.json`** (thay bằng thông tin tunnel HE; có thể thêm `local_ipv4`):
+
+```bash
+sudo tee /opt/he-ipv6-pool/config.json >/dev/null <<'EOF'
+{
+  "server_ipv4": "203.0.113.10",
+  "prefixes": ["2001:db8:1::/64", "2001:db8:abcd::/48"],
+  "mtu": 1480,
+  "listen": ":24601",
+  "users": {"alice": "change-me"}
+}
+EOF
+sudo chown root:hepool /opt/he-ipv6-pool/config.json
+sudo chmod 640 /opt/he-ipv6-pool/config.json
+```
+
+**4. Tạo dịch vụ runit và bật tự khởi động:**
+
+```bash
+sudo mkdir -p /etc/sv/he-ipv6-pool/log /var/log/he-ipv6-pool
+
+sudo tee /etc/sv/he-ipv6-pool/run >/dev/null <<'EOF'
+#!/bin/sh
+exec chpst -u hepool /opt/he-ipv6-pool/he-ipv6-pool -c /opt/he-ipv6-pool/config.json 2>&1
+EOF
+sudo chmod +x /etc/sv/he-ipv6-pool/run
+
+sudo tee /etc/sv/he-ipv6-pool/log/run >/dev/null <<'EOF'
+#!/bin/sh
+exec svlogd -tt /var/log/he-ipv6-pool
+EOF
+sudo chmod +x /etc/sv/he-ipv6-pool/log/run
+
+sudo ln -sfn /etc/sv/he-ipv6-pool /var/service/he-ipv6-pool
+```
+
+`chpst` chạy chương trình bằng người dùng `hepool`; quyền `CAP_NET_RAW` lấy từ `setcap` ở bước 2. Log ghi vào `/var/log/he-ipv6-pool/current`.
+
+**5. Cho phép giao thức 41 và cổng proxy trong iptables, lưu lại để khôi phục sau khởi động:**
+
+```bash
+sudo iptables -I INPUT -p 41 -s 203.0.113.10 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 24601 -j ACCEPT
+sudo iptables-save | sudo tee /etc/iptables/iptables.rules >/dev/null
+sudo xbps-install -Sy runit-iptables
+```
+
+**6. Kiểm tra:**
+
+```bash
+sudo sv status he-ipv6-pool
+sudo tail -f /var/log/he-ipv6-pool/current
+curl -x socks5h://alice:change-me@127.0.0.1:24601 https://api64.ipify.org
+```
+
+Thay `203.0.113.10`, `24601`, `alice`, `change-me` bằng giá trị thực. Security group của nhà cung cấp cloud cũng phải cho phép giao thức 41 và cổng TCP này.
+
+**Nâng cấp:** tải binary mới, thay tệp rồi cấp lại quyền và khởi động lại:
+
+```bash
+ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/; s/armv7l/arm/; s/i686/386/; s/riscv64/riscv64/')
+curl -fLo /tmp/he-ipv6-pool https://github.com/wsyqhh/he-ipv6-pool/releases/latest/download/he-ipv6-pool-linux-$ARCH
+sudo install -m 755 /tmp/he-ipv6-pool /opt/he-ipv6-pool/he-ipv6-pool
+sudo setcap cap_net_raw+ep /opt/he-ipv6-pool/he-ipv6-pool
+sudo sv restart he-ipv6-pool
+```
+
+`install` làm mất file capability, nên phải chạy lại `setcap` sau mỗi lần thay binary. Cấu hình được giữ nguyên; sửa `config.json` xong chạy `sudo sv restart he-ipv6-pool`. Trên Void không có lệnh `config`/`uninstall`.
+
+**Gỡ cài đặt:**
+
+```bash
+sudo sv down he-ipv6-pool 2>/dev/null || true
+sudo rm -f /var/service/he-ipv6-pool
+sudo rm -rf /etc/sv/he-ipv6-pool /opt/he-ipv6-pool /var/log/he-ipv6-pool
+sudo userdel hepool
+sudo iptables -D INPUT -p 41 -s <Server IPv4> -j ACCEPT
+sudo iptables -D INPUT -p tcp --dport <cổng> -j ACCEPT
+sudo iptables-save | sudo tee /etc/iptables/iptables.rules >/dev/null
+```
 
 ### Hoặc dùng Docker Compose
 
@@ -177,7 +283,7 @@ API khác: `ListenUDP`, `ListenTCP` (nhận kết nối vào trên địa chỉ 
 - Chỉ ra IPv6; đích chỉ có IPv4 sẽ bị từ chối ngay
 - Không hỗ trợ SOCKS5 `BIND` và phân mảnh UDP. SOCKS5 UDP dùng cổng ngẫu nhiên trên máy chủ, chỉ phù hợp dùng trên cùng máy hoặc cùng mạng nội bộ
 - Không tự động cập nhật endpoint IPv4 của tunnel HE (IP động có thể dùng cron gọi update URL của tunnelbroker)
-- Lệnh quản trị chỉ hỗ trợ Linux + systemd; không hỗ trợ Windows
+- Lệnh quản trị chỉ hỗ trợ Linux + systemd; Void Linux dùng runit phải cài thủ công theo hướng dẫn ở mục 2, không hỗ trợ Windows
 
 ## Biên dịch từ mã nguồn
 

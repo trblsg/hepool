@@ -49,11 +49,13 @@ jobs:
               -ldflags "-s -w -X main.version=$TAG" -o "dist/he-ipv6-pool-${target%/*}-${target#*/}" .
           done
           cd dist && sha256sum -- * > SHA256SUMS
-      - name: release
+      - name: create GitHub release
         run: |
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --generate-notes $prerelease
+          # Ghi chú cài đặt được đặt trước phần thay đổi do GitHub tự sinh
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
+            --notes "$(cat .github/release-notes.md)" --generate-notes $prerelease
         env:
           GH_TOKEN: ${{ github.token }}
 
