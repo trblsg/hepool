@@ -1,5 +1,5 @@
-// Package tunnel 在用户态接入 HE 6in4 隧道：raw socket 收发 IPv4 协议 41，
-// gVisor netstack 处理 IPv6，不创建任何网卡，并且可以用池内任意地址作为源地址。
+// Package tunnel kết nối tunnel HE 6in4 trong không gian người dùng: raw socket gửi nhận IPv4 giao thức 41,
+// gVisor netstack xử lý IPv6, không tạo bất kỳ card mạng nào, và có thể dùng bất kỳ địa chỉ nào trong pool làm địa chỉ nguồn.
 package tunnel
 
 import (
@@ -31,19 +31,19 @@ import (
 const nicID = 1
 
 var (
-	ErrNotInPool = errors.New("tunnel: 源地址不在地址池内")
-	ErrNoIPv6    = errors.New("tunnel: 目标没有 IPv6 地址")
+	ErrNotInPool = errors.New("tunnel: địa chỉ nguồn không nằm trong pool")
+	ErrNoIPv6    = errors.New("tunnel: đích không có địa chỉ IPv6")
 )
 
-// Config 对应 tunnelbroker.net 隧道详情页里的信息。
+// Config tương ứng với thông tin trên trang chi tiết tunnel của tunnelbroker.net.
 type Config struct {
 	ServerIPv4 netip.Addr     // HE "Server IPv4 Address"
-	LocalIPv4  netip.Addr     // 可选，本地绑定地址；NAT 后填内网 IP，零值为 0.0.0.0
-	Prefixes   []netip.Prefix // 可用作源地址的 IPv6 前缀（Routed /64、/48 等）
-	MTU        int            // 隧道 MTU，0 表示 1480
+	LocalIPv4  netip.Addr     // tùy chọn, địa chỉ ràng buộc cục bộ; sau NAT điền IP nội bộ, zero là 0.0.0.0
+	Prefixes   []netip.Prefix // tiền tố IPv6 có thể dùng làm địa chỉ nguồn (Routed /64, /48, v.v.)
+	MTU        int            // MTU tunnel, 0 nghĩa là 1480
 }
 
-// Tunnel 是一条用户态 6in4 隧道。
+// Tunnel là một tunnel 6in4 trong không gian người dùng.
 type Tunnel struct {
 	pool   pool
 	stack  *stack.Stack
@@ -56,18 +56,17 @@ type Tunnel struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	spreadSeq atomic.Uint64 // SpreadAddr 的序号，从随机值开始，重启后不会重放同样的子网顺序
+	spreadSeq atomic.Uint64 // số thứ tự của SpreadAddr, bắt đầu từ giá trị ngẫu nhiên, sau khi khởi động lại không phát lại cùng thứ tự subnet
 }
 
-// rxCapEndpoint 包装 channel.Endpoint，只覆盖 Capabilities()：gVisor 的
-// nic.DeliverNetworkPacket 在把包交给协议栈之前，会用链路层的
-// CapabilityRXChecksumOffload 能力位无条件覆盖 PacketBuffer.RXChecksumValidated
-// （见 pkg/tcpip/stack/nic.go），所以直接给某个包的 PacketBuffer 赋值不会生效——
-// 必须通过能力位才能让"这个包免校验"的决定真正传达到协议栈。
-// Capabilities() 在 DeliverNetworkPacket 里是每次同步、实时读取的，而 inbound()
-// 是唯一调用 InjectInbound 的协程（单协程、同步），所以在注入前设置 skipRXChecksum
-// 不存在并发问题；它和用于发送方向的 CapabilityTXChecksumOffload 是独立的位，
-// 不影响出方向的校验和计算。
+// rxCapEndpoint bọc channel.Endpoint, chỉ ghi đè Capabilities(): nic.DeliverNetworkPacket của gVisor
+// trước khi giao gói cho ngăn xếp giao thức sẽ dùng bit năng lực CapabilityRXChecksumOffload của lớp liên kết
+// để ghi đè vô điều kiện PacketBuffer.RXChecksumValidated (xem pkg/tcpip/stack/nic.go), nên gán trực tiếp
+// cho PacketBuffer của một gói sẽ không có tác dụng — quyết định "miễn kiểm tra gói này" chỉ có thể đến được
+// ngăn xếp giao thức thông qua bit năng lực. Capabilities() được đọc đồng bộ, theo thời gian thực mỗi lần
+// trong DeliverNetworkPacket, còn inbound() là goroutine duy nhất gọi InjectInbound (đơn goroutine, đồng bộ),
+// nên đặt skipRXChecksum trước khi inject không có vấn đề đồng thời; nó và CapabilityTXChecksumOffload dùng cho
+// chiều gửi là các bit độc lập, không ảnh hưởng việc tính checksum chiều ra.
 type rxCapEndpoint struct {
 	*channel.Endpoint
 	skipRXChecksum atomic.Bool
@@ -81,21 +80,21 @@ func (e *rxCapEndpoint) Capabilities() stack.LinkEndpointCapabilities {
 	return caps
 }
 
-// New 创建 raw socket（需要 root 或 CAP_NET_RAW）并启动隧道。
+// New tạo raw socket (cần root hoặc CAP_NET_RAW) và khởi động tunnel.
 func New(cfg Config) (*Tunnel, error) {
 	if !cfg.ServerIPv4.Is4() {
-		return nil, errors.New("tunnel: ServerIPv4 必须是 IPv4 地址")
+		return nil, errors.New("tunnel: ServerIPv4 phải là địa chỉ IPv4")
 	}
 	local := "0.0.0.0"
 	if cfg.LocalIPv4.IsValid() {
 		if !cfg.LocalIPv4.Is4() {
-			return nil, errors.New("tunnel: LocalIPv4 必须是 IPv4 地址")
+			return nil, errors.New("tunnel: LocalIPv4 phải là địa chỉ IPv4")
 		}
 		local = cfg.LocalIPv4.String()
 	}
 	pc, err := net.ListenPacket("ip4:41", local)
 	if err != nil {
-		return nil, fmt.Errorf("tunnel: 创建 raw socket 失败（需要 root 或 CAP_NET_RAW）: %w", err)
+		return nil, fmt.Errorf("tunnel: tạo raw socket thất bại (cần root hoặc CAP_NET_RAW): %w", err)
 	}
 	t, err := NewWithConn(cfg, pc, &net.IPAddr{IP: cfg.ServerIPv4.AsSlice()})
 	if err != nil {
@@ -105,17 +104,17 @@ func New(cfg Config) (*Tunnel, error) {
 	return t, nil
 }
 
-// NewWithConn 在任意 PacketConn 上运行隧道：pc 上收发的每个数据报都是一个裸 IPv6 包，
-// 只接受来自 peer 的包，发出的包都写给 peer。New 用它跑在 raw socket 上，测试用它跑在 UDP 上。
-// 成功后 pc 归 Tunnel 所有，由 Close 关闭。
+// NewWithConn chạy tunnel trên bất kỳ PacketConn nào: mỗi datagram gửi nhận trên pc là một gói IPv6 thô,
+// chỉ chấp nhận gói từ peer, mọi gói gửi ra đều gửi cho peer. New dùng nó trên raw socket, test dùng nó trên UDP.
+// Sau khi thành công, pc thuộc quyền sở hữu của Tunnel và được Close đóng.
 func NewWithConn(cfg Config, pc net.PacketConn, peer net.Addr) (*Tunnel, error) {
 	if len(cfg.Prefixes) == 0 {
-		return nil, errors.New("tunnel: 至少需要一个 IPv6 前缀")
+		return nil, errors.New("tunnel: cần ít nhất một tiền tố IPv6")
 	}
 	p := make(pool, len(cfg.Prefixes))
 	for i, pfx := range cfg.Prefixes {
 		if !pfx.IsValid() || !pfx.Addr().Is6() || pfx.Addr().Is4In6() {
-			return nil, fmt.Errorf("tunnel: %s 不是 IPv6 前缀", pfx)
+			return nil, fmt.Errorf("tunnel: %s không phải tiền tố IPv6", pfx)
 		}
 		p[i] = pfx.Masked()
 	}
@@ -124,13 +123,13 @@ func NewWithConn(cfg Config, pc net.PacketConn, peer net.Addr) (*Tunnel, error) 
 		mtu = 1480
 	}
 	if mtu < header.IPv6MinimumMTU || mtu > 65535 {
-		return nil, fmt.Errorf("tunnel: MTU %d 超出范围 [1280, 65535]", mtu)
+		return nil, fmt.Errorf("tunnel: MTU %d vượt ngoài phạm vi [1280, 65535]", mtu)
 	}
-	// addrPort 对不认识的 net.Addr 类型（包括 nil）返回零值 AddrPort；如果不在这里
-	// 挡住，inbound() 里 "来源==peer" 的判断会退化成零值与零值相等，等于对任何
-	// 发送者都放行，彻底失去来源过滤。
+	// addrPort trả về AddrPort zero với các kiểu net.Addr không nhận biết được (gồm nil); nếu không chặn
+	// ở đây, điều kiện "nguồn == peer" trong inbound() sẽ suy biến thành zero bằng zero, tức là cho phép
+	// mọi người gửi, hoàn toàn mất lọc nguồn.
 	if !addrPort(peer).Addr().IsValid() {
-		return nil, errors.New("tunnel: peer 必须是 *net.IPAddr 或 *net.UDPAddr")
+		return nil, errors.New("tunnel: peer phải là *net.IPAddr hoặc *net.UDPAddr")
 	}
 
 	s := stack.New(stack.Options{
@@ -143,7 +142,7 @@ func NewWithConn(cfg Config, pc net.PacketConn, peer net.Addr) (*Tunnel, error) 
 		s.Destroy()
 		return nil, fmt.Errorf("tunnel: CreateNIC: %s", err)
 	}
-	// Spoofing：允许 bind 和发送任意源地址；Promiscuous：接收发往任意地址的包。
+	// Spoofing: cho phép bind và gửi bất kỳ địa chỉ nguồn nào; Promiscuous: nhận gói gửi tới bất kỳ địa chỉ nào.
 	s.SetSpoofing(nicID, true)
 	s.SetPromiscuousMode(nicID, true)
 	s.SetRouteTable([]tcpip.Route{{Destination: header.IPv6EmptySubnet, NIC: nicID}})
@@ -159,7 +158,7 @@ func NewWithConn(cfg Config, pc net.PacketConn, peer net.Addr) (*Tunnel, error) 
 	return t, nil
 }
 
-// inbound 把 peer 发来的 IPv6 包注入 netstack。
+// inbound đưa các gói IPv6 từ peer vào netstack.
 func (t *Tunnel) inbound() {
 	defer t.wg.Done()
 	buf := make([]byte, 65535)
@@ -169,11 +168,11 @@ func (t *Tunnel) inbound() {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			slog.Debug("tunnel: 读取失败", "err", err)
+			slog.Debug("tunnel: đọc thất bại", "err", err)
 			continue
 		}
 		if addrPort(from) != t.peerAP {
-			continue // 只接受 HE 服务器发来的包，防止伪造注入
+			continue // chỉ chấp nhận gói từ máy chủ HE, tránh bị chèn gói giả
 		}
 		pkt := buf[:n]
 		if len(pkt) < header.IPv6MinimumSize || header.IPVersion(pkt) != header.IPv6Version {
@@ -182,46 +181,46 @@ func (t *Tunnel) inbound() {
 		ip := header.IPv6(pkt)
 		end := header.IPv6MinimumSize + int(ip.PayloadLength())
 		if end > len(pkt) {
-			continue // 截断的包
+			continue // gói bị cắt cụt
 		}
 		if !t.pool.contains(netip.AddrFrom16(ip.DestinationAddress().As16())) {
 			continue
 		}
 		pb := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(pkt[:end])})
-		// 超过隧道 MTU 的包通常是内核 GRO 合并出的超级包：内核在合并前已对每个
-		// 分段逐一校验过 TCP/UDP 校验和，合并后不会重算内层校验和（字段仍是某一
-		// 分段的旧值），netstack 若按常规流程重新校验会误判为校验和错误而丢弃，
-		// 所以要放行。通过 rxCap 临时上报 CapabilityRXChecksumOffload（见其注释），
-		// 让 nic.DeliverNetworkPacket 把这个决定写进 PacketBuffer.RXChecksumValidated。
-		// ponytail: GRO 合并出的包若 ≤ MTU（发送方 MSS ≲ 720）仍会因旧校验和被丢；
-		// MTU 配得比 HE 小时，IPv4 分片重组出的大包会跳过校验；这个判断依赖 gvisor
-		// nic.go 用链路能力覆盖 RXChecksumValidated 的现状，升级 gVisor 时由
-		// TestOversizedPacketSkipsChecksum 兜底。
+		// Gói vượt quá MTU của tunnel thường là siêu gói do kernel GRO gộp: kernel đã kiểm tra checksum
+		// TCP/UDP của từng phân đoạn trước khi gộp, sau khi gộp không tính lại checksum bên trong (trường
+		// vẫn là giá trị cũ của một phân đoạn nào đó), nếu netstack kiểm tra lại theo quy trình thông thường
+		// sẽ nhầm là lỗi checksum và bỏ gói, nên phải cho qua. Tạm báo CapabilityRXChecksumOffload qua rxCap
+		// (xem chú thích của nó) để nic.DeliverNetworkPacket ghi quyết định này vào PacketBuffer.RXChecksumValidated.
+		// ponytail: gói do GRO gộp nếu ≤ MTU (MSS bên gửi ≲ 720) vẫn bị bỏ vì checksum cũ; khi MTU đặt nhỏ hơn
+		// HE, gói lớn do tái hợp phân mảnh IPv4 sẽ bỏ qua kiểm tra; phán đoán này phụ thuộc việc nic.go của gvisor
+		// dùng năng lực liên kết ghi đè RXChecksumValidated, khi nâng cấp gVisor có TestOversizedPacketSkipsChecksum
+		// làm lưới an toàn.
 		t.rxCap.skipRXChecksum.Store(end > t.mtu)
 		t.ep.InjectInbound(ipv6.ProtocolNumber, pb)
 		pb.DecRef()
 	}
 }
 
-// outbound 把 netstack 发出的 IPv6 包交给 peer（raw socket 会由内核补上 IPv4 头）。
+// outbound giao các gói IPv6 do netstack gửi ra cho peer (raw socket sẽ được kernel bổ sung header IPv4).
 func (t *Tunnel) outbound(ctx context.Context) {
 	defer t.wg.Done()
 	for {
 		pkt := t.ep.ReadContext(ctx)
 		if pkt == nil {
-			return // ctx 已取消
+			return // ctx đã bị hủy
 		}
 		v := pkt.ToView()
 		_, err := t.pc.WriteTo(v.AsSlice(), t.peer)
 		v.Release()
 		pkt.DecRef()
 		if err != nil {
-			slog.Debug("tunnel: 发送失败", "err", err)
+			slog.Debug("tunnel: gửi thất bại", "err", err)
 		}
 	}
 }
 
-// addrPort 统一 raw socket（*net.IPAddr）和 UDP（*net.UDPAddr）的地址，便于比较来源。
+// addrPort thống nhất địa chỉ của raw socket (*net.IPAddr) và UDP (*net.UDPAddr), thuận tiện so sánh nguồn.
 func addrPort(a net.Addr) netip.AddrPort {
 	switch a := a.(type) {
 	case *net.IPAddr:
@@ -238,7 +237,7 @@ func fullAddr(ap netip.AddrPort) tcpip.FullAddress {
 	return tcpip.FullAddress{NIC: nicID, Addr: tcpip.AddrFrom16(ap.Addr().As16()), Port: ap.Port()}
 }
 
-// Resolve 把 host:port 解析成 IPv6 地址：域名只查询 AAAA，IPv4 目标返回 ErrNoIPv6。
+// Resolve phân giải host:port thành địa chỉ IPv6: tên miền chỉ truy vấn AAAA, đích IPv4 trả về ErrNoIPv6.
 func Resolve(ctx context.Context, address string) (netip.AddrPort, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
@@ -246,7 +245,7 @@ func Resolve(ctx context.Context, address string) (netip.AddrPort, error) {
 	}
 	p, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
-		return netip.AddrPort{}, fmt.Errorf("tunnel: 端口无效 %q", port)
+		return netip.AddrPort{}, fmt.Errorf("tunnel: cổng không hợp lệ %q", port)
 	}
 	ip, err := netip.ParseAddr(host)
 	if err != nil {
@@ -265,8 +264,8 @@ func Resolve(ctx context.Context, address string) (netip.AddrPort, error) {
 	return netip.AddrPortFrom(ip.WithZone(""), uint16(p)), nil
 }
 
-// Dial 以 src 为源地址连接 address（host:port），network 为 tcp/tcp6/udp/udp6。
-// src 为零值时随机选择池内地址。
+// Dial kết nối tới address (host:port) với src làm địa chỉ nguồn, network là tcp/tcp6/udp/udp6.
+// Khi src là zero thì chọn ngẫu nhiên địa chỉ trong pool.
 func (t *Tunnel) Dial(ctx context.Context, src netip.Addr, network, address string) (net.Conn, error) {
 	if !src.IsValid() {
 		src = t.pool.random()
@@ -282,7 +281,7 @@ func (t *Tunnel) Dial(ctx context.Context, src netip.Addr, network, address stri
 	case "tcp", "tcp6":
 		c, err := gonet.DialTCPWithBind(ctx, t.stack, local, remote, ipv6.ProtocolNumber)
 		if err != nil {
-			return nil, err // 不能直接返回 c：nil 的 *TCPConn 装进接口后不等于 nil
+			return nil, err // không được trả c trực tiếp: *TCPConn nil khi đóng gói vào interface không bằng nil
 		}
 		return c, nil
 	case "udp", "udp6":
@@ -292,11 +291,11 @@ func (t *Tunnel) Dial(ctx context.Context, src netip.Addr, network, address stri
 		}
 		return c, nil
 	}
-	return nil, fmt.Errorf("tunnel: 不支持的 network %q", network)
+	return nil, fmt.Errorf("tunnel: không hỗ trợ network %q", network)
 }
 
-// ListenUDP 在 src 上打开一个非 connected 的 UDP socket，端口为 0 时自动分配。
-// 返回的 conn 是 gonet 的 UDP 实现，WriteTo 只接受 *net.UDPAddr。
+// ListenUDP mở một UDP socket không connected trên src, cổng 0 thì tự động cấp.
+// conn trả về là implementation UDP của gonet, WriteTo chỉ chấp nhận *net.UDPAddr.
 func (t *Tunnel) ListenUDP(src netip.AddrPort) (net.PacketConn, error) {
 	if !t.pool.contains(src.Addr()) {
 		return nil, ErrNotInPool
@@ -309,7 +308,7 @@ func (t *Tunnel) ListenUDP(src netip.AddrPort) (net.PacketConn, error) {
 	return c, nil
 }
 
-// ListenTCP 在池内地址上监听 TCP，用于接受入站连接。
+// ListenTCP lắng nghe TCP trên địa chỉ trong pool, dùng để nhận kết nối vào.
 func (t *Tunnel) ListenTCP(addr netip.AddrPort) (net.Listener, error) {
 	if !t.pool.contains(addr.Addr()) {
 		return nil, ErrNotInPool
@@ -321,17 +320,18 @@ func (t *Tunnel) ListenTCP(addr netip.AddrPort) (net.Listener, error) {
 	return l, nil
 }
 
-// PrefixCheck 是 Check 对一个前缀的检查结果。
+// PrefixCheck là kết quả Check kiểm tra một tiền tố.
 type PrefixCheck struct {
 	Prefix netip.Prefix
-	Src    netip.Addr    // 检查用的源地址
-	RTT    time.Duration // 从发起连接到收到回应的耗时，Err 不为 nil 时为 0
-	Err    error         // nil 表示去程和回程都通
+	Src    netip.Addr    // địa chỉ nguồn dùng để kiểm tra
+	RTT    time.Duration // thời gian từ khi bắt đầu kết nối đến khi nhận phản hồi, bằng 0 khi Err khác nil
+	Err    error         // nil nghĩa là cả chiều đi và chiều về đều thông
 }
 
-// Check 从每个前缀里取一个随机地址，并发地向 targets 发起 TCP 连接：任意一个连上或者被拒绝
-// （收到 RST 也说明回包到了）就算这个前缀可用；直到 ctx 结束都没有回应，通常是 HE 没有把
-// 这个前缀路由到隧道，或者防火墙挡住了协议 41。结果按前缀的配置顺序排列。
+// Check lấy một địa chỉ ngẫu nhiên từ mỗi tiền tố, đồng thời mở kết nối TCP tới targets: chỉ cần một kết nối
+// thành công hoặc bị từ chối (nhận RST cũng chứng tỏ gói phản hồi đã tới) thì coi tiền tố đó khả dụng; nếu đến
+// khi ctx kết thúc vẫn không có phản hồi, thường là HE chưa định tuyến tiền tố này tới tunnel, hoặc tường lửa
+// chặn giao thức 41. Kết quả được sắp xếp theo thứ tự cấu hình của tiền tố.
 func (t *Tunnel) Check(ctx context.Context, targets []netip.AddrPort) []PrefixCheck {
 	res := make([]PrefixCheck, len(t.pool))
 	var wg sync.WaitGroup
@@ -347,7 +347,7 @@ func (t *Tunnel) Check(ctx context.Context, targets []netip.AddrPort) []PrefixCh
 	return res
 }
 
-// probe 以 src 为源地址同时连接所有 targets，返回第一个回应的耗时。
+// probe đồng thời kết nối tới mọi targets với src làm địa chỉ nguồn, trả về thời gian của phản hồi đầu tiên.
 func (t *Tunnel) probe(ctx context.Context, src netip.Addr, targets []netip.AddrPort) (time.Duration, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -358,13 +358,13 @@ func (t *Tunnel) probe(ctx context.Context, src netip.Addr, targets []netip.Addr
 			c, err := t.Dial(ctx, src, "tcp", dst.String())
 			if err == nil {
 				c.Close()
-			} else if strings.Contains(err.Error(), "refused") { // gonet 把 tcpip 错误转成了纯文本
+			} else if strings.Contains(err.Error(), "refused") { // gonet chuyển lỗi tcpip thành văn bản thuần
 				err = nil
 			}
 			errc <- err
 		}()
 	}
-	err := errors.New("tunnel: 没有检查目标")
+	err := errors.New("tunnel: không có mục tiêu kiểm tra")
 	for range targets {
 		if err = <-errc; err == nil {
 			return time.Since(start), nil
@@ -373,19 +373,19 @@ func (t *Tunnel) probe(ctx context.Context, src netip.Addr, targets []netip.Addr
 	return 0, err
 }
 
-// RandomAddr 返回池内随机地址。
+// RandomAddr trả về địa chỉ ngẫu nhiên trong pool.
 func (t *Tunnel) RandomAddr() netip.Addr { return t.pool.random() }
 
-// SpreadAddr 返回池内地址，按 /cidr 子网轮换：每次调用落在不同的子网，用遍所有子网之后才会重复。
+// SpreadAddr trả về địa chỉ trong pool, luân chuyển theo subnet /cidr: mỗi lần gọi rơi vào subnet khác nhau, chỉ lặp lại sau khi dùng hết mọi subnet.
 func (t *Tunnel) SpreadAddr(cidr int) netip.Addr { return t.pool.spread(cidr, t.spreadSeq.Add(1)) }
 
-// StickyAddr 返回 key 对应的固定地址。
+// StickyAddr trả về địa chỉ cố định tương ứng với key.
 func (t *Tunnel) StickyAddr(key string) netip.Addr { return t.pool.sticky(key) }
 
-// Contains 判断 a 是否在池内。
+// Contains cho biết a có nằm trong pool không.
 func (t *Tunnel) Contains(a netip.Addr) bool { return t.pool.contains(a) }
 
-// Close 关闭隧道以及隧道上的所有连接。
+// Close đóng tunnel và mọi kết nối trên tunnel.
 func (t *Tunnel) Close() error {
 	t.cancel()
 	err := t.pc.Close()

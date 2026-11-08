@@ -8,13 +8,13 @@ import (
 	"net/netip"
 )
 
-// pool 是可用作源地址的 IPv6 前缀集合，元素均已 Masked。
+// pool là tập hợp các tiền tố IPv6 có thể dùng làm địa chỉ nguồn, mọi phần tử đều đã Masked.
 type pool []netip.Prefix
 
-// random 先均匀选一个前缀，再随机填充主机位。
+// random trước tiên chọn đều một tiền tố, rồi điền ngẫu nhiên phần host bit.
 func (p pool) random() netip.Addr { return randomIn(p[rand.IntN(len(p))]) }
 
-// randomIn 返回 pfx 内主机位随机的地址。
+// randomIn trả về địa chỉ trong pfx với phần host bit ngẫu nhiên.
 func randomIn(pfx netip.Prefix) netip.Addr {
 	var host [16]byte
 	binary.BigEndian.PutUint64(host[:8], rand.Uint64())
@@ -22,17 +22,18 @@ func randomIn(pfx netip.Prefix) netip.Addr {
 	return fill(pfx, host)
 }
 
-// sticky 把 key 哈希成固定地址：同一个 key 永远得到同一个结果，无需保存状态。
+// sticky băm key thành địa chỉ cố định: cùng một key luôn cho cùng kết quả, không cần lưu trạng thái.
 func (p pool) sticky(key string) netip.Addr {
 	h := sha256.Sum256([]byte(key))
 	pfx := p[binary.BigEndian.Uint64(h[:8])%uint64(len(p))]
 	return fill(pfx, [16]byte(h[16:]))
 }
 
-// spread 返回第 i 个轮换地址：把池拆成 /cidr 子网并编号，第 i 次取编号 i*m mod n 的子网，主机位随机。
-// n 是子网总数，m 与 n 互质，因此乘法取模是 [0,n) 上的置换：连续 n 个 i 落在 n 个不同的子网，
-// 用遍所有子网之前不会重复；m 取黄金比例常数，相邻两次落在相距很远的子网，而不是挨着的 ::1、::2。
-// 比 cidr 更长（更小）的前缀算一个子网。
+// spread trả về địa chỉ luân chuyển thứ i: chia pool thành các subnet /cidr và đánh số, lần thứ i lấy subnet
+// số i*m mod n, phần host bit ngẫu nhiên. n là tổng số subnet, m nguyên tố cùng nhau với n, nên phép nhân lấy
+// modulo là một hoán vị trên [0,n): n giá trị i liên tiếp rơi vào n subnet khác nhau, không lặp lại trước khi
+// dùng hết mọi subnet; m lấy hằng số tỉ lệ vàng, hai lần liên tiếp rơi vào các subnet rất xa nhau, chứ không
+// phải ::1, ::2 liền kề. Tiền tố dài hơn (nhỏ hơn) cidr được tính là một subnet.
 func (p pool) spread(cidr int, i uint64) netip.Addr {
 	var n uint64
 	for _, pfx := range p {
@@ -49,7 +50,7 @@ func (p pool) spread(cidr int, i uint64) netip.Addr {
 			idx -= k
 			continue
 		}
-		// 地址的前 cidr 位换成子网编号（右对齐），其余主机位随机；前缀位随后由 fill 覆盖
+		// Đổi cidr bit đầu của địa chỉ thành số hiệu subnet (căn phải), các host bit còn lại ngẫu nhiên; các bit tiền tố sau đó được fill ghi đè
 		h, l := rand.Uint64(), rand.Uint64()
 		if s := uint(128 - min(max(cidr, pfx.Bits()), 128)); s >= 64 {
 			h = h&(1<<(s-64)-1) | idx<<(s-64)
@@ -64,8 +65,8 @@ func (p pool) spread(cidr int, i uint64) netip.Addr {
 	panic("unreachable")
 }
 
-// subnets 返回 pfx 包含的 /cidr 子网个数。
-// ponytail: 上限 2^40 个，超出部分的高位子网不参与轮换；HE 最大分配 /48，按 /64 才 2^16 个
+// subnets trả về số subnet /cidr mà pfx chứa.
+// ponytail: giới hạn 2^40 subnet, các subnet cao vượt quá không tham gia luân chuyển; HE cấp tối đa /48, tính theo /64 chỉ có 2^16 subnet
 func subnets(pfx netip.Prefix, cidr int) uint64 {
 	return 1 << min(max(cidr-pfx.Bits(), 0), 40)
 }
@@ -86,11 +87,11 @@ func (p pool) contains(a netip.Addr) bool {
 	return false
 }
 
-// fill 保留 pfx 的前缀位，主机位取自 host。
+// fill giữ nguyên các bit tiền tố của pfx, các bit host lấy từ host.
 func fill(pfx netip.Prefix, host [16]byte) netip.Addr {
 	b := pfx.Addr().As16()
 	for i := range b {
-		n := pfx.Bits() - i*8 // 本字节中属于前缀的位数
+		n := pfx.Bits() - i*8 // số bit thuộc tiền tố trong byte này
 		var mask byte
 		switch {
 		case n >= 8:

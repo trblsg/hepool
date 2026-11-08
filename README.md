@@ -3,56 +3,56 @@
 [![release](https://github.com/wsyqhh/he-ipv6-pool/actions/workflows/release.yml/badge.svg)](https://github.com/wsyqhh/he-ipv6-pool/actions/workflows/release.yml)
 [![license](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
-> **关于本仓库**
+> **Giới thiệu về kho lưu trữ này**
 >
-> 这是 [x6nux/he-ipv6-pool](https://gitlab.com/x6nux/he-ipv6-pool) 的复刻版本（上游 GitHub 仓库已不存在，原始代码来自 GitLab），
-> 仅做了以下改动，用于自己构建并发布 Docker 镜像：
+> Đây là bản sao của [x6nux/he-ipv6-pool](https://gitlab.com/x6nux/he-ipv6-pool) (kho GitHub upstream không còn tồn tại, mã gốc đến từ GitLab),
+> chỉ thay đổi những điểm sau để tự build và phát hành Docker image:
 >
-> - 模块路径、下载地址、镜像地址改为本仓库（`github.com/wsyqhh/he-ipv6-pool`、`ghcr.io/wsyqhh/he-ipv6-pool`）
-> - 发版工作流增加一步，把 GHCR 包自动设为公开
+> - Đường dẫn module, địa chỉ tải xuống và địa chỉ image được đổi sang kho này (`github.com/wsyqhh/he-ipv6-pool`, `ghcr.io/wsyqhh/he-ipv6-pool`)
+> - Quy trình phát hành thêm một bước tự động đặt gói GHCR thành công khai
 >
-> 代码版权归原作者所有，遵循 GPL-3.0。上游 README 中的下载链接与镜像地址**全部失效**，请使用本仓库的 Releases 和镜像。
+> Bản quyền mã thuộc về tác giả gốc, theo giấy phép GPL-3.0. Các liên kết tải xuống và địa chỉ image trong README upstream **đều không còn hiệu lực**, vui lòng dùng Releases và image của kho này.
 
 
-把一条免费的 [Hurricane Electric](https://tunnelbroker.net) IPv6 隧道变成 **IPv6 代理池**：用 HE 分配的 Routed /64、/48 里的**任意地址**作为出口，一个 /48 就有 2^80 个可用 IP。
+Biến một tunnel IPv6 [Hurricane Electric](https://tunnelbroker.net) miễn phí thành **pool proxy IPv6**: dùng **bất kỳ địa chỉ nào** trong Routed /64, /48 do HE cấp làm đầu ra, một /48 đã có 2^80 IP khả dụng.
 
-- **不建网卡**：不需要 sit/gif/TUN，不改路由表，不影响服务器本身的网络。整个 IPv6 协议栈在用户态运行
-- **SOCKS5 + HTTP 同端口**：SOCKS5（含 UDP）和 HTTP 代理（含 CONNECT）共用一个端口，自动识别
-- **用户名控制出口**：每次随机，或者按会话固定、设置生存时间、按 /64 轮换，也可以指定具体地址
-- **一条命令部署**：`install` 会配置好 systemd 服务（只授予 `CAP_NET_RAW`）和 iptables，随机生成端口和密码
-- 支持 Linux（含 1:1 NAT 的云主机），也可以作为 Go 库使用；macOS 可以编译运行，但还没有在真实隧道上验证过
+- **Không tạo card mạng**: không cần sit/gif/TUN, không sửa bảng định tuyến, không ảnh hưởng mạng của chính máy chủ. Toàn bộ ngăn xếp giao thức IPv6 chạy trong không gian người dùng
+- **SOCKS5 + HTTP cùng cổng**: SOCKS5 (gồm UDP) và HTTP proxy (gồm CONNECT) dùng chung một cổng, tự động nhận diện
+- **Tên người dùng điều khiển đầu ra**: ngẫu nhiên mỗi lần, hoặc cố định theo phiên, đặt thời gian sống, luân chuyển theo /64, cũng có thể chỉ định địa chỉ cụ thể
+- **Triển khai bằng một lệnh**: `install` sẽ cấu hình dịch vụ systemd (chỉ cấp `CAP_NET_RAW`) và iptables, tự động tạo cổng và mật khẩu ngẫu nhiên
+- Hỗ trợ Linux (gồm máy chủ cloud dùng 1:1 NAT), cũng có thể dùng như thư viện Go; macOS có thể biên dịch và chạy nhưng chưa được kiểm chứng trên tunnel thật
 
 ```
-客户端 ─SOCKS5/HTTP─→ he-ipv6-pool（gVisor 用户态协议栈）─6in4（IPv4 协议 41）─→ HE 隧道服务器 ─→ IPv6 互联网
+Máy khách ─SOCKS5/HTTP─→ he-ipv6-pool (ngăn xếp giao thức không gian người dùng gVisor) ─6in4 (giao thức IPv4 41)─→ máy chủ tunnel HE ─→ Internet IPv6
 ```
 
-## 1. 注册 HE 隧道
+## 1. Đăng ký tunnel HE
 
-1. 在 **<https://tunnelbroker.net/register.php>** 免费注册账号，密码会发到邮箱
-2. 登录后点击左侧 **Create Regular Tunnel**：
-   - **IPv4 Endpoint** 填服务器的公网 IPv4。HE 会从 `66.220.2.74` ping 这个地址，**服务器和云厂商安全组要允许入站 ICMP**，否则会提示 `IP is not ICMP pingable`。必须是真实公网 IP，CGNAT 后面的地址用不了
-   - **选择隧道服务器：推荐欧美地区**（理由见下）
-3. 创建后打开隧道的 **Tunnel Details** 页面，记下：
-   - **Server IPv4 Address**：对应 `-server`
-   - **Routed /64**：对应 `-prefix`
-   - 点击 **Routed /48** 旁边的 **Assign /48** 再分配一个 /48，也写进 `-prefix`
-4. Advanced 页的 **MTU** 保持默认 1480（和本程序的默认值一致）
+1. Đăng ký miễn phí tài khoản tại **<https://tunnelbroker.net/register.php>**, mật khẩu sẽ được gửi tới email
+2. Sau khi đăng nhập, nhấn **Create Regular Tunnel** ở bên trái:
+   - **IPv4 Endpoint** điền IPv4 công cộng của máy chủ. HE sẽ ping địa chỉ này từ `66.220.2.74`, **máy chủ và security group của nhà cung cấp cloud phải cho phép ICMP vào**, nếu không sẽ báo `IP is not ICMP pingable`. Phải là IP công cộng thật, địa chỉ sau CGNAT không dùng được
+   - **Chọn máy chủ tunnel: khuyến nghị khu vực châu Âu/Mỹ** (lý do xem bên dưới)
+3. Sau khi tạo, mở trang **Tunnel Details** của tunnel, ghi lại:
+   - **Server IPv4 Address**: tương ứng `-server`
+   - **Routed /64**: tương ứng `-prefix`
+   - Nhấn **Assign /48** bên cạnh **Routed /48** để được cấp thêm một /48, cũng ghi vào `-prefix`
+4. Giữ **MTU** ở trang Advanced là 1480 mặc định (khớp với giá trị mặc định của chương trình)
 
-### 为什么推荐欧美地区的隧道服务器
+### Vì sao khuyến nghị máy chủ tunnel ở châu Âu/Mỹ
 
-- **实测**：亚洲节点（新加坡）分配的 /48 在 HE 那一侧一直没有路由，HE 的隧道服务器直接对它回 ICMPv6 不可达；换成美国 Ashburn 节点后，/64 和 /48 立刻全部可用
-- **节点多**：HE 的隧道服务器有 30 个在北美和欧洲（北美 18 个、欧洲 12 个），亚洲只有香港、新加坡、东京 3 个。HE 的骨干网和对等互联也主要在这两个地区
-- **IP 归属地**：HE 的 IPv6 地址通常按隧道服务器所在地区登记归属地
+- **Thực đo**: /48 được cấp từ node châu Á (Singapore) phía HE không hề được định tuyến, máy chủ tunnel HE trả thẳng ICMPv6 unreachable; sau khi đổi sang node Ashburn (Mỹ), cả /64 và /48 lập tức dùng được
+- **Nhiều node**: HE có 30 máy chủ tunnel ở Bắc Mỹ và châu Âu (Bắc Mỹ 18, châu Âu 12), châu Á chỉ có Hồng Kông, Singapore, Tokyo 3 node. Mạng xương sống và peering của HE cũng chủ yếu ở hai khu vực này
+- **Vị trí địa lý IP**: địa chỉ IPv6 của HE thường được đăng ký theo khu vực đặt máy chủ tunnel
 
-| 你的服务器在 | 推荐的隧道服务器 |
+| Máy chủ của bạn ở | Máy chủ tunnel khuyến nghị |
 |---|---|
-| 北美 | 离服务器最近的北美节点，例如 Ashburn、New York、Chicago、Dallas、Fremont、Los Angeles、Seattle |
-| 欧洲 | Frankfurt、Amsterdam、London、Paris、Zurich、Stockholm 等，选最近的 |
-| 亚洲、大洋洲 | 美国西海岸：Fremont、Los Angeles、San Jose、Seattle，是延迟最低的欧美节点 |
+| Bắc Mỹ | Node Bắc Mỹ gần máy chủ nhất, ví dụ Ashburn, New York, Chicago, Dallas, Fremont, Los Angeles, Seattle |
+| Châu Âu | Frankfurt, Amsterdam, London, Paris, Zurich, Stockholm, v.v., chọn node gần nhất |
+| Châu Á, châu Đại Dương | Bờ Tây Hoa Kỳ: Fremont, Los Angeles, San Jose, Seattle, là các node châu Âu/Mỹ có độ trễ thấp nhất |
 
-创建页面会列出每个隧道服务器的 IPv4，可以先在服务器上 `ping` 一下比较延迟。
+Trang tạo sẽ liệt kê IPv4 của từng máy chủ tunnel, có thể `ping` thử trên máy chủ để so sánh độ trễ trước.
 
-## 2. 安装（Linux + systemd）
+## 2. Cài đặt (Linux + systemd)
 
 ```bash
 ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
@@ -61,79 +61,79 @@ chmod +x /tmp/he-ipv6-pool
 sudo /tmp/he-ipv6-pool install -server <Server IPv4> -prefix <Routed /64>,<Routed /48>
 ```
 
-升级到新版本：用同样的方法下载，再执行一次 `sudo /tmp/he-ipv6-pool install`，原有配置保留。
+Nâng cấp lên phiên bản mới: tải xuống theo cách tương tự, rồi chạy lại `sudo /tmp/he-ipv6-pool install`, cấu hình cũ được giữ nguyên.
 
-`install` 会把程序装到 `/opt/he-ipv6-pool`，创建系统用户 `hepool` 和 systemd 服务 `he-ipv6-pool`，在 iptables 里放行协议 41 和代理端口（装了 netfilter-persistent 时会持久化），然后启动服务并打印连接信息。端口、用户名、密码没有指定时随机生成。
+`install` sẽ cài chương trình vào `/opt/he-ipv6-pool`, tạo người dùng hệ thống `hepool` và dịch vụ systemd `he-ipv6-pool`, cho phép giao thức 41 và cổng proxy trong iptables (lưu lại nếu đã cài netfilter-persistent), sau đó khởi động dịch vụ và in thông tin kết nối. Cổng, tên người dùng, mật khẩu sẽ được tạo ngẫu nhiên nếu không chỉ định.
 
-> **云厂商的安全组**（OCI Security List、AWS Security Group 等）需要自己放行：来自 HE Server IPv4 的**协议 41**，以及代理的 **TCP 端口**。
+> **Security group của nhà cung cấp cloud** (OCI Security List, AWS Security Group, v.v.) cần tự cho phép: **giao thức 41** từ HE Server IPv4 và **cổng TCP** của proxy.
 
-| 命令 | 作用 |
+| Lệnh | Tác dụng |
 |---|---|
-| `install [选项]` | 安装。用新版二进制再执行一次就是升级，原有配置保留 |
-| `config` | 显示当前配置和连接信息 |
-| `config -listen :31234`、`config -pass 新密码` 等 | 修改配置，同步防火墙规则并重启服务 |
-| `uninstall` | 删除服务、安装目录、用户和对应的 iptables 规则 |
+| `install [tùy chọn]` | Cài đặt. Chạy lại bằng binary mới là nâng cấp, cấu hình cũ được giữ |
+| `config` | Hiển thị cấu hình hiện tại và thông tin kết nối |
+| `config -listen :31234`, `config -pass mật-khẩu-mới`, v.v. | Sửa cấu hình, đồng bộ quy tắc tường lửa và khởi động lại dịch vụ |
+| `uninstall` | Xóa dịch vụ, thư mục cài đặt, người dùng và quy tắc iptables tương ứng |
 
-选项：`-server`、`-prefix`（多个用逗号分隔）、`-local`、`-mtu`、`-listen`、`-user`、`-pass`，详见 `install -h` 或 [参数参考](docs/reference.md#12-install--config-的选项)。
+Tùy chọn: `-server`, `-prefix` (nhiều tiền tố phân tách bằng dấu phẩy), `-local`, `-mtu`, `-listen`, `-user`, `-pass`, chi tiết xem `install -h` hoặc [tham khảo tham số](docs/reference.md#12-tùy-chọn-của-install--config).
 
-### 或者用 Docker Compose
+### Hoặc dùng Docker Compose
 
-镜像发布在 `ghcr.io/wsyqhh/he-ipv6-pool`（linux/amd64、linux/arm64，压缩后约 4MB），全部配置通过环境变量传入：
+Image được phát hành tại `ghcr.io/wsyqhh/he-ipv6-pool` (linux/amd64, linux/arm64, sau khi nén khoảng 4MB), toàn bộ cấu hình truyền qua biến môi trường:
 
 ```bash
 mkdir he-ipv6-pool && cd he-ipv6-pool
 curl -fLO https://raw.githubusercontent.com/wsyqhh/he-ipv6-pool/main/compose.yaml
 curl -fL https://raw.githubusercontent.com/wsyqhh/he-ipv6-pool/main/.env.example -o .env
-vi .env              # 填写 HE_SERVER、HE_PREFIXES、PROXY_LISTEN、PROXY_USER、PROXY_PASS
+vi .env              # điền HE_SERVER, HE_PREFIXES, PROXY_LISTEN, PROXY_USER, PROXY_PASS
 docker compose up -d
 ```
 
-| 环境变量 | 说明 |
+| Biến môi trường | Mô tả |
 |---|---|
-| `HE_SERVER` | 隧道详情页的 Server IPv4 Address（必填） |
-| `HE_PREFIXES` | Routed /64、/48，逗号分隔（必填） |
-| `PROXY_LISTEN` | 代理监听地址，例如 `:24601`（必填） |
-| `PROXY_USER` / `PROXY_PASS` | 代理用户名和密码（必填），密码可以用 `openssl rand -hex 16` 生成 |
-| `HE_LOCAL` / `HE_MTU` | 本地绑定的 IPv4（1:1 NAT 留空）、MTU（默认 1480） |
+| `HE_SERVER` | Server IPv4 Address trên trang chi tiết tunnel (bắt buộc) |
+| `HE_PREFIXES` | Routed /64, /48, phân tách bằng dấu phẩy (bắt buộc) |
+| `PROXY_LISTEN` | Địa chỉ lắng nghe proxy, ví dụ `:24601` (bắt buộc) |
+| `PROXY_USER` / `PROXY_PASS` | Tên người dùng và mật khẩu proxy (bắt buộc), mật khẩu có thể tạo bằng `openssl rand -hex 16` |
+| `HE_LOCAL` / `HE_MTU` | IPv4 ràng buộc cục bộ (để trống với 1:1 NAT), MTU (mặc định 1480) |
 
-- **必须用 host 网络**（compose 文件里已经写好）：bridge 网络下 6in4 包要经过 Docker 的 NAT，协议 41 没有端口，宿主机上有别的 6in4 流量或者容器换了 IP 时会因为 NAT 冲突而丢包
-- 容器里没有 `install`，宿主机防火墙要自己放行：`iptables -I INPUT -p 41 -s <Server IPv4> -j ACCEPT`，以及代理端口
-- 同一台机器上不要同时运行 Docker 版和 `install` 安装的服务：两个实例会互相重置对方的连接
+- **Phải dùng mạng host** (tệp compose đã viết sẵn): với mạng bridge, gói 6in4 phải đi qua NAT của Docker, giao thức 41 không có cổng, khi trên máy chủ có lưu lượng 6in4 khác hoặc container đổi IP sẽ mất gói do xung đột NAT
+- Trong container không có `install`, tường lửa trên máy chủ phải tự cho phép: `iptables -I INPUT -p 41 -s <Server IPv4> -j ACCEPT`, và cổng proxy
+- Không chạy đồng thời bản Docker và dịch vụ cài bằng `install` trên cùng một máy: hai thực thể sẽ reset kết nối của nhau
 
-## 3. 使用
+## 3. Sử dụng
 
 ```bash
-# SOCKS5 和 HTTP 用同一个端口；请用 socks5h://，让代理解析域名
-curl -x socks5h://<用户名>:<密码>@<服务器>:<端口> https://api64.ipify.org
-curl -x http://<用户名>:<密码>@<服务器>:<端口> https://api64.ipify.org
+# SOCKS5 và HTTP dùng cùng một cổng; hãy dùng socks5h:// để proxy phân giải tên miền
+curl -x socks5h://<tên-người-dùng>:<mật-khẩu>@<máy-chủ>:<cổng> https://api64.ipify.org
+curl -x http://<tên-người-dùng>:<mật-khẩu>@<máy-chủ>:<cổng> https://api64.ipify.org
 ```
 
-**在用户名后面加后缀来选择出口 IP**，密码不变。后缀顺序任意，可以组合：
+**Thêm hậu tố sau tên người dùng để chọn IP đầu ra**, mật khẩu không đổi. Thứ tự hậu tố tùy ý, có thể kết hợp:
 
-| 用户名 | 出口 |
+| Tên người dùng | Đầu ra |
 |---|---|
-| `alice` | 每条连接随机 |
-| `alice-cidr-64` | 每条连接随机，并且每次换一个 /64（用遍所有 /64 之前不重复） |
-| `alice-session-abc` | 永久固定一个 IP（服务重启后也不变） |
-| `alice-session-abc-ttl-10` | 固定 10 分钟，之后换一个新 IP（`-ttl-` 也可以写 `90s`、`2h`） |
-| `alice-session-abc-ttl-30-cidr-64` | 固定 30 分钟，到期后换到一个新的 /64 |
-| `alice-ttl-10` | 这个用户的所有连接共用一个 IP，每 10 分钟换一次 |
-| `alice-ip-2001-db8-abcd--1` | 指定 `2001:db8:abcd::1`（`:` 写成 `-`），不能和其他后缀组合 |
+| `alice` | Ngẫu nhiên mỗi kết nối |
+| `alice-cidr-64` | Ngẫu nhiên mỗi kết nối, và mỗi lần đổi một /64 (không lặp lại trước khi dùng hết mọi /64) |
+| `alice-session-abc` | Cố định vĩnh viễn một IP (không đổi cả sau khi khởi động lại dịch vụ) |
+| `alice-session-abc-ttl-10` | Cố định 10 phút, sau đó đổi sang IP mới (`-ttl-` cũng có thể viết `90s`, `2h`) |
+| `alice-session-abc-ttl-30-cidr-64` | Cố định 30 phút, hết hạn thì đổi sang một /64 mới |
+| `alice-ttl-10` | Mọi kết nối của người dùng này dùng chung một IP, 10 phút đổi một lần |
+| `alice-ip-2001-db8-abcd--1` | Chỉ định `2001:db8:abcd::1` (`:` viết thành `-`), không thể kết hợp với hậu tố khác |
 
-目标必须有 IPv6 地址（AAAA 记录）。完整规则、会话的过期方式、错误码见 **[docs/reference.md](docs/reference.md)**。
+Đích phải có địa chỉ IPv6 (bản ghi AAAA). Quy tắc đầy đủ, cách phiên hết hạn, mã lỗi xem **[docs/reference.md](docs/reference.md)**.
 
-## 4. 手动运行（macOS 或没有 systemd 的系统）
+## 4. Chạy thủ công (macOS hoặc hệ thống không có systemd)
 
-复制 [`config.example.json`](config.example.json) 为 `config.json` 并按隧道详情页填写（字段说明见[参数参考](docs/reference.md#2-配置文件-configjson)），也可以不写配置文件，改用和 compose 相同的[环境变量](docs/reference.md#21-环境变量)。然后：
+Sao chép [`config.example.json`](config.example.json) thành `config.json` và điền theo trang chi tiết tunnel (mô tả trường xem [tham khảo tham số](docs/reference.md#2-tệp-cấu-hình-configjson)), cũng có thể không viết tệp cấu hình mà dùng [biến môi trường](docs/reference.md#21-biến-môi-trường) giống compose. Sau đó:
 
 ```bash
-sudo setcap cap_net_raw+ep ./he-ipv6-pool   # Linux；macOS 直接用 sudo 运行
-./he-ipv6-pool -c config.json               # -v 输出 debug 日志
+sudo setcap cap_net_raw+ep ./he-ipv6-pool   # Linux; macOS chạy trực tiếp bằng sudo
+./he-ipv6-pool -c config.json               # -v xuất log debug
 ```
 
-还需要自己放行协议 41：`iptables -I INPUT -p 41 -s <Server IPv4> -j ACCEPT`。在家用路由器后面时，要把协议 41 转发（或 DMZ）到本机，`local_ipv4` 留空或者填内网 IP。
+Cũng cần tự cho phép giao thức 41: `iptables -I INPUT -p 41 -s <Server IPv4> -j ACCEPT`. Khi ở sau router gia đình, cần chuyển tiếp giao thức 41 (hoặc DMZ) tới máy này, `local_ipv4` để trống hoặc điền IP nội bộ.
 
-## 5. 作为 Go 库使用
+## 5. Dùng như thư viện Go
 
 ```bash
 go get github.com/wsyqhh/he-ipv6-pool
@@ -151,7 +151,7 @@ if err != nil {
 }
 defer t.Close()
 
-// 源地址传零值表示随机；也可以传 t.StickyAddr("key")、t.SpreadAddr(64) 或具体地址
+// Truyền địa chỉ nguồn zero để chọn ngẫu nhiên; cũng có thể truyền t.StickyAddr("key"), t.SpreadAddr(64) hoặc địa chỉ cụ thể
 client := &http.Client{Transport: &http.Transport{
 	DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return t.Dial(ctx, netip.Addr{}, network, addr)
@@ -159,49 +159,49 @@ client := &http.Client{Transport: &http.Transport{
 }}
 ```
 
-其他 API：`ListenUDP`、`ListenTCP`（在池内地址上接受入站连接）、`Resolve`、`RandomAddr`、`Contains`、`NewWithConn`（在任意 `net.PacketConn` 上运行隧道）。源地址不在池内时返回 `tunnel.ErrNotInPool`，目标没有 IPv6 地址时返回 `tunnel.ErrNoIPv6`，用 `errors.Is` 判断。代理在 `proxy` 包：`(&proxy.Proxy{Tunnel: t, Users: users}).Serve(l)`。
+API khác: `ListenUDP`, `ListenTCP` (nhận kết nối vào trên địa chỉ trong pool), `Resolve`, `RandomAddr`, `Contains`, `NewWithConn` (chạy tunnel trên bất kỳ `net.PacketConn` nào). Trả về `tunnel.ErrNotInPool` khi địa chỉ nguồn không nằm trong pool, `tunnel.ErrNoIPv6` khi đích không có địa chỉ IPv6, dùng `errors.Is` để kiểm tra. Proxy nằm trong gói `proxy`: `(&proxy.Proxy{Tunnel: t, Users: users}).Serve(l)`.
 
-## 6. 排障
+## 6. Xử lý sự cố
 
-| 现象 | 原因和处理 |
+| Hiện tượng | Nguyên nhân và cách xử lý |
 |---|---|
-| 部分随机连接超时，或者某些会话一直失败 | 有前缀没有被 HE 路由到这条隧道。启动日志里会逐个前缀报告「隧道检查通过 / 失败」；也可以从任意有 IPv6 的机器 `ping -6` 每个前缀里的地址，已路由的会有回复 |
-| 新分配的 /48 不通 | HE 的新前缀偶尔要过一段时间才生效，可以用 `scripts/check-prefix.sh` 定时检查（见[参数参考](docs/reference.md#6-scriptscheck-prefixsh)）。长时间不通就换一个欧美隧道服务器重建 |
-| 所有连接都不通 | 检查安全组是否放行了协议 41；是否同时启用了内核的 HE 隧道（`iface he-ipv6 inet6 v4tunnel`），有的话先 `ifdown he-ipv6`，仍有问题再 `modprobe -r sit` |
-| 同一个会话高并发时出现 429 或超时 | 目标网站按 IP 限流。同一个会话的所有请求共用一个 IP，换成不带会话的 `-cidr-64`，或者降低每个会话的并发 |
-| 只有 IPv4 的网站打不开 | 本程序只出 IPv6，不会回退到 IPv4 |
-| 想看每个请求的出口 IP 和失败原因 | 设置 `LOG_LEVEL=debug`（或 `-v`），每个请求输出一行；平时每 10 分钟输出一次统计。见[日志说明](docs/reference.md#19-日志与启动检查) |
+| Một số kết nối ngẫu nhiên bị timeout, hoặc một số phiên luôn thất bại | Có tiền tố chưa được HE định tuyến tới tunnel này. Log khởi động sẽ báo từng tiền tố "Kiểm tra tunnel đạt / thất bại"; cũng có thể từ bất kỳ máy nào có IPv6 `ping -6` địa chỉ trong từng tiền tố, tiền tố đã định tuyến sẽ có phản hồi |
+| /48 mới được cấp không thông | Tiền tố mới của HE đôi khi cần một thời gian mới có hiệu lực, có thể dùng `scripts/check-prefix.sh` kiểm tra định kỳ (xem [tham khảo tham số](docs/reference.md#6-scriptscheck-prefixsh)). Nếu lâu vẫn không thông thì đổi sang máy chủ tunnel châu Âu/Mỹ khác để tạo lại |
+| Mọi kết nối đều không thông | Kiểm tra security group đã cho phép giao thức 41 chưa; có đang đồng thời bật tunnel HE của kernel không (`iface he-ipv6 inet6 v4tunnel`), nếu có thì `ifdown he-ipv6` trước, vẫn lỗi thì `modprobe -r sit` |
+| Cùng một phiên có lưu lượng cao đồng thời bị 429 hoặc timeout | Trang đích giới hạn theo IP. Mọi yêu cầu cùng một phiên dùng chung IP, hãy đổi sang `-cidr-64` không có phiên, hoặc giảm số kết nối đồng thời của mỗi phiên |
+| Không mở được trang chỉ có IPv4 | Chương trình này chỉ ra IPv6, không fallback về IPv4 |
+| Muốn xem IP đầu ra và lý do thất bại của từng yêu cầu | Đặt `LOG_LEVEL=debug` (hoặc `-v`), mỗi yêu cầu in một dòng; bình thường mỗi 10 phút in thống kê một lần. Xem [mô tả log](docs/reference.md#19-log-và-kiểm-tra-khởi-động) |
 
-## 7. 限制
+## 7. Hạn chế
 
-- 只出 IPv6；目标只有 IPv4 时直接拒绝
-- 不支持 SOCKS5 `BIND` 和 UDP 分片。SOCKS5 UDP 使用服务器上的随机端口，只适合本机或同一内网
-- 不会自动更新 HE 隧道的 IPv4 端点（动态 IP 可以用 cron 调用 tunnelbroker 的 update URL）
-- 管理命令只支持 Linux + systemd；不支持 Windows
+- Chỉ ra IPv6; đích chỉ có IPv4 sẽ bị từ chối ngay
+- Không hỗ trợ SOCKS5 `BIND` và phân mảnh UDP. SOCKS5 UDP dùng cổng ngẫu nhiên trên máy chủ, chỉ phù hợp dùng trên cùng máy hoặc cùng mạng nội bộ
+- Không tự động cập nhật endpoint IPv4 của tunnel HE (IP động có thể dùng cron gọi update URL của tunnelbroker)
+- Lệnh quản trị chỉ hỗ trợ Linux + systemd; không hỗ trợ Windows
 
-## 从源码编译
+## Biên dịch từ mã nguồn
 
-需要 Go 1.25.5 或更新的 1.25.x：
+Cần Go 1.25.5 hoặc 1.25.x mới hơn:
 
 ```bash
 go install github.com/wsyqhh/he-ipv6-pool@latest
-# 或者
+# hoặc
 git clone https://github.com/wsyqhh/he-ipv6-pool && cd he-ipv6-pool
 CGO_ENABLED=0 go build -o he-ipv6-pool .
 ```
 
-## 发版
+## Phát hành
 
-GitHub Actions 会运行测试，编译 Linux（amd64/arm64/arm/386/riscv64）和 macOS（amd64/arm64）的二进制，连同 `SHA256SUMS` 发布到 [Releases](https://github.com/wsyqhh/he-ipv6-pool/releases)：
+GitHub Actions sẽ chạy test, biên dịch binary Linux (amd64/arm64/arm/386/riscv64) và macOS (amd64/arm64), cùng `SHA256SUMS` phát hành lên [Releases](https://github.com/wsyqhh/he-ipv6-pool/releases):
 
 ```bash
-gh workflow run release.yml -f version=v0.1.0   # 在 main 最新提交上打标签并发布，也可以在 Actions 页面点 Run workflow
-# 或者
+gh workflow run release.yml -f version=v0.1.0   # gắn thẻ và phát hành trên commit mới nhất của main, cũng có thể vào trang Actions nhấn Run workflow
+# hoặc
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-版本号格式 `vX.Y.Z`，带后缀（如 `v0.2.0-rc1`）的是预发布版本。用 `he-ipv6-pool -version` 查看版本，升级时下载新版本再执行一次 `install`。详见[参数参考](docs/reference.md#7-发布github-actions)。
+Định dạng số phiên bản là `vX.Y.Z`, bản có hậu tố (như `v0.2.0-rc1`) là bản phát hành trước. Dùng `he-ipv6-pool -version` để xem phiên bản, khi nâng cấp tải phiên bản mới rồi chạy lại `install`. Chi tiết xem [tham khảo tham số](docs/reference.md#7-phát-hành-github-actions).
 
-## 许可证
+## Giấy phép
 
 [GPL-3.0](LICENSE)

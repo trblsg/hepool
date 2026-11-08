@@ -45,9 +45,9 @@ func listenUDP(t *testing.T) net.PacketConn {
 	return c
 }
 
-// setup 搭建测试拓扑：被测隧道 local（池 2001:db8:1::/48）通过 UDP 连到扮演互联网的 remote 隧道。
-// remote 上运行：80 端口 HTTP（响应体为请求方 IP）、7 端口 TCP echo、7 端口 UDP（回复请求方地址）、
-// 8 端口 TCP（读到 EOF 后回写 "resp:" + 收到的内容，用于验证半关闭）。
+// setup dựng mô hình kiểm thử: tunnel cần kiểm thử local (pool 2001:db8:1::/48) kết nối qua UDP tới tunnel remote đóng vai Internet.
+// Trên remote chạy: cổng 80 HTTP (nội dung phản hồi là IP của bên yêu cầu), cổng 7 TCP echo, cổng 7 UDP (trả lời địa chỉ bên gửi),
+// cổng 8 TCP (sau khi đọc tới EOF ghi lại "resp:" + nội dung nhận được, dùng để kiểm tra bán đóng).
 func setup(t *testing.T, users map[string]string) (*tunnel.Tunnel, *Proxy) {
 	t.Helper()
 	a, b := listenUDP(t), listenUDP(t)
@@ -118,15 +118,15 @@ func setup(t *testing.T, users map[string]string) (*tunnel.Tunnel, *Proxy) {
 	return local, &Proxy{Tunnel: local, Users: users}
 }
 
-// serveProxy 在随机端口上运行 p.Serve（SOCKS5 和 HTTP 共用），返回监听地址。
+// serveProxy chạy p.Serve trên cổng ngẫu nhiên (SOCKS5 và HTTP dùng chung), trả về địa chỉ lắng nghe.
 func serveProxy(t *testing.T, p *Proxy) string {
 	l := listenTCP(t)
 	go p.Serve(l)
 	return l.Addr().String()
 }
 
-// get 通过代理 proxyURL 请求 remote 上的 HTTP 服务，返回状态码和响应体（remote 看到的源 IP）。
-// 连接失败时状态码为 0，响应体为错误信息。
+// get yêu cầu dịch vụ HTTP trên remote qua proxyURL, trả về mã trạng thái và nội dung phản hồi (IP nguồn mà remote thấy).
+// Khi kết nối thất bại, mã trạng thái là 0 và nội dung là thông tin lỗi.
 func get(t *testing.T, proxyURL string) (int, string) {
 	t.Helper()
 	u, err := url.Parse(proxyURL)
@@ -154,30 +154,30 @@ func TestParseSelector(t *testing.T) {
 		{"alice-ip-2001-db8-1--42", selector{user: "alice", ip: "2001-db8-1--42"}},
 		{"alice-cidr-64", selector{user: "alice", cidr: 64}},
 		{"alice-ttl-10", selector{user: "alice", ttl: 10 * time.Minute, sticky: true}},
-		// 组合使用，顺序任意；会话 ID 可以带 -；用户名里的 - 不受影响
+		// Kết hợp, thứ tự tùy ý; ID phiên có thể chứa -; dấu - trong tên người dùng không bị ảnh hưởng
 		{"my-name-session-a-b-ttl-10-cidr-64", selector{user: "my-name", session: "a-b", ttl: 10 * time.Minute, cidr: 64, sticky: true}},
 		{"alice-cidr-56-ttl-1h30m-session-x", selector{user: "alice", session: "x", ttl: 90 * time.Minute, cidr: 56, sticky: true}},
-		{"alice-session-ip-x", selector{user: "alice", session: "ip-x", sticky: true}}, // 紧跟在后缀名后面的不算新后缀
+		{"alice-session-ip-x", selector{user: "alice", session: "ip-x", sticky: true}}, // ngay sau tên hậu tố không được coi là hậu tố mới
 	}
 	for _, c := range cases {
 		if got, err := parseSelector(c.in); err != nil || got != c.want {
-			t.Errorf("parseSelector(%q) = %+v, %v；期望 %+v", c.in, got, err, c.want)
+			t.Errorf("parseSelector(%q) = %+v, %v; mong đợi %+v", c.in, got, err, c.want)
 		}
 	}
 	for _, in := range []string{
-		"alice-ip-2001-db8-1--1-session-x", // -ip- 不能组合
-		"alice-session-a-session-b",        // 重复
+		"alice-ip-2001-db8-1--1-session-x", // -ip- không thể kết hợp
+		"alice-session-a-session-b",        // lặp
 		"alice-cidr-0", "alice-cidr-129", "alice-cidr-x",
 		"alice-ttl-0", "alice-ttl-x", "alice-ttl--5",
 	} {
 		sel, err := parseSelector(in)
 		if err == nil || sel.user != "alice" {
-			t.Errorf("parseSelector(%q) 应当报错并且仍然拆出用户名: %+v, %v", in, sel, err)
+			t.Errorf("parseSelector(%q) phải báo lỗi và vẫn tách ra tên người dùng: %+v, %v", in, sel, err)
 		}
 	}
 }
 
-// 会话、生存时间、cidr 组合：同一个会话在生存时间内固定 IP，到期后换新；带 cidr 时不同会话落在不同子网。
+// Tổ hợp phiên, thời gian sống, cidr: cùng một phiên có IP cố định trong thời gian sống, hết hạn thì đổi mới; có cidr thì các phiên khác nhau rơi vào các subnet khác nhau.
 func TestSessionTTL(t *testing.T) {
 	local, p := setup(t, map[string]string{"alice": "pw"})
 	addr := serveProxy(t, p)
@@ -190,12 +190,12 @@ func TestSessionTTL(t *testing.T) {
 		return body
 	}
 
-	// 到期换新由 TestSessions 覆盖：-race 下每个请求要几百毫秒，这里没法卡准时间
+	// Việc đổi mới khi hết hạn do TestSessions bao phủ: dưới -race mỗi yêu cầu mất vài trăm mili giây, ở đây không thể canh thời gian chính xác
 	if a, b := ip("alice-session-t-ttl-10"), ip("alice-session-t-ttl-10"); a != b {
-		t.Fatalf("生存时间内应当固定: %s %s", a, b)
+		t.Fatalf("Trong thời gian sống phải cố định: %s %s", a, b)
 	}
 	if a, b := ip("alice-ttl-10"), ip("alice-ttl-10"); a != b {
-		t.Fatalf("只带 ttl 时整个用户共用一个 IP: %s %s", a, b)
+		t.Fatalf("Chỉ có ttl thì toàn bộ người dùng dùng chung một IP: %s %s", a, b)
 	}
 
 	seen := map[netip.Prefix]bool{}
@@ -204,19 +204,19 @@ func TestSessionTTL(t *testing.T) {
 		a, b := ip(u), ip(u)
 		s := netip.PrefixFrom(netip.MustParseAddr(a), 64).Masked()
 		if a != b || seen[s] {
-			t.Fatalf("%s: %s %s，子网重复 %v", u, a, b, seen[s])
+			t.Fatalf("%s: %s %s, subnet trùng %v", u, a, b, seen[s])
 		}
 		seen[s] = true
 	}
 
 	for _, bad := range []string{"alice-ip-2001-db8-1--1-session-x", "alice-ttl-0"} {
 		if code, body := get(t, "http://"+bad+":pw@"+addr); code != http.StatusForbidden {
-			t.Errorf("%s 应当 403: %d %s", bad, code, body)
+			t.Errorf("%s phải 403: %d %s", bad, code, body)
 		}
 	}
 }
 
-// 生存时间从第一次使用开始计时、使用不会延长，到期后换新地址；过期的会话在表增长时被清理。
+// Thời gian sống tính từ lần dùng đầu tiên, việc sử dụng không kéo dài nó, hết hạn thì đổi địa chỉ mới; phiên hết hạn được dọn khi bảng tăng.
 func TestSessions(t *testing.T) {
 	n := 0
 	pick := func() netip.Addr { n++; return netip.AddrFrom16([16]byte{0: 0x20, 15: byte(n)}) }
@@ -224,11 +224,11 @@ func TestSessions(t *testing.T) {
 	a := s.get("k", 200*time.Millisecond, pick)
 	time.Sleep(50 * time.Millisecond)
 	if b := s.get("k", 200*time.Millisecond, pick); b != a {
-		t.Fatalf("生存时间内应当复用: %s %s", a, b)
+		t.Fatalf("Trong thời gian sống phải dùng lại: %s %s", a, b)
 	}
 	time.Sleep(200 * time.Millisecond)
 	if b := s.get("k", 200*time.Millisecond, pick); b == a {
-		t.Fatalf("到期后应当换新地址: %s", b)
+		t.Fatalf("Sau khi hết hạn phải đổi địa chỉ mới: %s", b)
 	}
 
 	var big sessions
@@ -238,12 +238,12 @@ func TestSessions(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	big.get("new", time.Minute, pick)
 	if len(big.m) != 1 {
-		t.Fatalf("过期会话没有被清理: 还剩 %d 个", len(big.m))
+		t.Fatalf("Phiên hết hạn chưa được dọn: còn lại %d", len(big.m))
 	}
 }
 
-// SOCKS5 和 HTTP 共用一个端口：按首字节分流，两种客户端都能用；
-// 不是 0x05 开头的数据都交给 HTTP 服务器处理（垃圾数据得到 400）。
+// SOCKS5 và HTTP dùng chung một cổng: phân loại theo byte đầu tiên, cả hai loại client đều dùng được;
+// mọi dữ liệu không bắt đầu bằng 0x05 đều giao cho máy chủ HTTP xử lý (dữ liệu rác nhận 400).
 func TestMixedPort(t *testing.T) {
 	local, p := setup(t, map[string]string{"alice": "pw"})
 	addr := serveProxy(t, p)
@@ -261,11 +261,11 @@ func TestMixedPort(t *testing.T) {
 	io.WriteString(c, "\x01garbage\r\n\r\n")
 	line, _ := bufio.NewReader(c).ReadString('\n')
 	if !strings.HasPrefix(line, "HTTP/1.1 400") {
-		t.Fatalf("垃圾数据应当由 HTTP 服务器回 400，得到 %q", line)
+		t.Fatalf("Dữ liệu rác phải được máy chủ HTTP trả 400, nhận được %q", line)
 	}
 }
 
-// -cidr-<位数>：随机出口按 /位数 轮换子网，连续的连接不落在同一个子网；位数非法时拒绝。
+// -cidr-<số bit>: đầu ra ngẫu nhiên luân chuyển subnet theo /số bit, các kết nối liên tiếp không rơi vào cùng một subnet; số bit không hợp lệ thì từ chối.
 func TestCIDR(t *testing.T) {
 	local, p := setup(t, map[string]string{"alice": "pw"})
 	addr := serveProxy(t, p)
@@ -277,16 +277,16 @@ func TestCIDR(t *testing.T) {
 		}
 		s := netip.PrefixFrom(netip.MustParseAddr(body), 64).Masked()
 		if seen[s] {
-			t.Fatalf("%s 重复使用了子网 %s", body, s)
+			t.Fatalf("%s đã dùng lại subnet %s", body, s)
 		}
 		seen[s] = true
 	}
 	for _, bad := range []string{"0", "129", "x"} {
 		if code, body := get(t, "http://alice-cidr-"+bad+":pw@"+addr); code != http.StatusForbidden {
-			t.Errorf("cidr-%s 应当 403: %d %s", bad, code, body)
+			t.Errorf("cidr-%s phải 403: %d %s", bad, code, body)
 		}
 		if code, _ := get(t, "socks5://alice-cidr-"+bad+":pw@"+addr); code != 0 {
-			t.Errorf("socks5 cidr-%s 应当失败: %d", bad, code)
+			t.Errorf("socks5 cidr-%s phải thất bại: %d", bad, code)
 		}
 	}
 }
@@ -296,22 +296,22 @@ func TestSOCKS5(t *testing.T) {
 	addr := serveProxy(t, p)
 
 	if code, body := get(t, "socks5://alice:pw@"+addr); code != 200 || !local.Contains(netip.MustParseAddr(body)) {
-		t.Fatalf("随机: %d %s", code, body)
+		t.Fatalf("Ngẫu nhiên: %d %s", code, body)
 	}
 	want := local.StickyAddr("alice-session-s1").String()
 	for range 2 {
 		if code, body := get(t, "socks5://alice-session-s1:pw@"+addr); code != 200 || body != want {
-			t.Fatalf("session: %d %s，期望 %s", code, body, want)
+			t.Fatalf("session: %d %s, mong đợi %s", code, body, want)
 		}
 	}
 	if code, body := get(t, "socks5://alice-ip-2001-db8-1--42:pw@"+addr); code != 200 || body != "2001:db8:1::42" {
-		t.Fatalf("显式 IP: %d %s", code, body)
+		t.Fatalf("IP chỉ định: %d %s", code, body)
 	}
 	if code, body := get(t, "socks5://alice-ip-2001-db8-2--1:pw@"+addr); code != 0 {
-		t.Fatalf("池外显式 IP 应当失败: %d %s", code, body)
+		t.Fatalf("IP chỉ định ngoài pool phải thất bại: %d %s", code, body)
 	}
 	if code, body := get(t, "socks5://alice:wrong@"+addr); code != 0 {
-		t.Fatalf("错误密码应当失败: %d %s", code, body)
+		t.Fatalf("Sai mật khẩu phải thất bại: %d %s", code, body)
 	}
 }
 
@@ -319,10 +319,10 @@ func TestSOCKS5NoAuth(t *testing.T) {
 	local, p := setup(t, nil)
 	addr := serveProxy(t, p)
 	if code, body := get(t, "socks5://"+addr); code != 200 || !local.Contains(netip.MustParseAddr(body)) {
-		t.Fatalf("无认证: %d %s", code, body)
+		t.Fatalf("Không xác thực: %d %s", code, body)
 	}
 	if code, body := get(t, "socks5://x-session-a:any@"+addr); code != 200 || body != local.StickyAddr("x-session-a").String() {
-		t.Fatalf("无认证 + session: %d %s", code, body)
+		t.Fatalf("Không xác thực + session: %d %s", code, body)
 	}
 }
 
@@ -338,12 +338,12 @@ func TestSOCKS5UDP(t *testing.T) {
 	c.Write([]byte{5, 1, 2})
 	c.Write(append(append([]byte{1, byte(len(user))}, user...), 2, 'p', 'w'))
 	c.Write([]byte{5, cmdAssociate, 0, atypIPv4, 0, 0, 0, 0, 0, 0})
-	resp := make([]byte, 2+2+10) // 方法选择 + 认证结果 + 应答（BND 为 IPv4）
+	resp := make([]byte, 2+2+10) // chọn phương thức + kết quả xác thực + phản hồi (BND là IPv4)
 	if _, err := io.ReadFull(c, resp); err != nil {
 		t.Fatal(err)
 	}
 	if resp[1] != 2 || resp[3] != 0 || resp[5] != repOK || resp[7] != atypIPv4 {
-		t.Fatalf("握手应答异常: %v", resp)
+		t.Fatalf("Phản hồi bắt tay bất thường: %v", resp)
 	}
 	bnd := netip.AddrPortFrom(netip.AddrFrom4([4]byte(resp[8:12])), binary.BigEndian.Uint16(resp[12:14]))
 
@@ -363,16 +363,16 @@ func TestSOCKS5UDP(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n < len(hdr) || !bytes.Equal(buf[:len(hdr)], hdr) {
-		t.Fatalf("UDP 应答头异常: %v", buf[:n])
+		t.Fatalf("Header phản hồi UDP bất thường: %v", buf[:n])
 	}
 	got := netip.MustParseAddrPort(string(buf[len(hdr):n])).Addr()
 	if want := local.StickyAddr(user); got != want {
-		t.Fatalf("对端看到的源地址 %s，期望 %s", got, want)
+		t.Fatalf("Địa chỉ nguồn mà phía đối diện thấy %s, mong đợi %s", got, want)
 	}
 }
 
-// 客户端发完请求后 CloseWrite（半关闭）必须仍能收到完整响应：relay 不能在某一
-// 方向读到 EOF 时就把两端整个关掉，而要把 EOF 转换成对另一端的 CloseWrite。
+// Sau khi client gửi xong yêu cầu rồi CloseWrite (bán đóng) vẫn phải nhận được phản hồi đầy đủ: relay không được
+// đóng toàn bộ hai đầu khi một chiều đọc tới EOF, mà phải chuyển EOF thành CloseWrite cho phía bên kia.
 func TestSOCKS5HalfClose(t *testing.T) {
 	_, p := setup(t, map[string]string{"alice": "pw"})
 	c, err := net.Dial("tcp", serveProxy(t, p))
@@ -390,13 +390,13 @@ func TestSOCKS5HalfClose(t *testing.T) {
 	req = binary.BigEndian.AppendUint16(req, 8)
 	tc.Write(req)
 
-	// 方法选择(2) + 认证结果(2) + CONNECT 应答(VER REP RSV ATYP ADDR(16) PORT(2) = 22)
+	// Chọn phương thức(2) + kết quả xác thực(2) + phản hồi CONNECT(VER REP RSV ATYP ADDR(16) PORT(2) = 22)
 	resp := make([]byte, 2+2+22)
 	if _, err := io.ReadFull(tc, resp); err != nil {
 		t.Fatal(err)
 	}
 	if resp[1] != 2 || resp[3] != 0 || resp[5] != repOK || resp[7] != atypIPv6 {
-		t.Fatalf("CONNECT 应答异常: %v", resp)
+		t.Fatalf("Phản hồi CONNECT bất thường: %v", resp)
 	}
 
 	if _, err := tc.Write([]byte("q")); err != nil {
@@ -419,23 +419,23 @@ func TestHTTPProxy(t *testing.T) {
 	addr := serveProxy(t, p)
 
 	if code, body := get(t, "http://alice:pw@"+addr); code != 200 || !local.Contains(netip.MustParseAddr(body)) {
-		t.Fatalf("随机: %d %s", code, body)
+		t.Fatalf("Ngẫu nhiên: %d %s", code, body)
 	}
 	want := local.StickyAddr("alice-session-h1").String()
 	if code, body := get(t, "http://alice-session-h1:pw@"+addr); code != 200 || body != want {
-		t.Fatalf("session: %d %s，期望 %s", code, body, want)
+		t.Fatalf("session: %d %s, mong đợi %s", code, body, want)
 	}
 	if code, body := get(t, "http://alice-ip-2001-db8-1--43:pw@"+addr); code != 200 || body != "2001:db8:1::43" {
-		t.Fatalf("显式 IP: %d %s", code, body)
+		t.Fatalf("IP chỉ định: %d %s", code, body)
 	}
 	if code, body := get(t, "http://alice-ip-2001-db8-2--1:pw@"+addr); code != http.StatusForbidden {
-		t.Fatalf("池外显式 IP 应当 403: %d %s", code, body)
+		t.Fatalf("IP chỉ định ngoài pool phải 403: %d %s", code, body)
 	}
 	if code, body := get(t, "http://alice:wrong@"+addr); code != http.StatusProxyAuthRequired {
-		t.Fatalf("错误密码应当 407: %d %s", code, body)
+		t.Fatalf("Sai mật khẩu phải 407: %d %s", code, body)
 	}
 	if code, body := get(t, "http://"+addr); code != http.StatusProxyAuthRequired {
-		t.Fatalf("缺少认证应当 407: %d %s", code, body)
+		t.Fatalf("Thiếu xác thực phải 407: %d %s", code, body)
 	}
 }
 
@@ -455,7 +455,7 @@ func TestHTTPConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("CONNECT 状态码 %d", resp.StatusCode)
+		t.Fatalf("Mã trạng thái CONNECT %d", resp.StatusCode)
 	}
 	io.WriteString(c, "hello")
 	buf := make([]byte, 5)
@@ -480,12 +480,12 @@ func TestClassify(t *testing.T) {
 	}
 	for _, c := range cases {
 		if got := classify(c.err); got != c.want {
-			t.Errorf("classify(%v) = %s，期望 %s", c.err, got, c.want)
+			t.Errorf("classify(%v) = %s, mong đợi %s", c.err, got, c.want)
 		}
 	}
 }
 
-// lockedBuffer 是并发安全的日志缓冲区。
+// lockedBuffer là bộ đệm log an toàn khi dùng đồng thời.
 type lockedBuffer struct {
 	mu sync.Mutex
 	b  bytes.Buffer
@@ -503,7 +503,7 @@ func (l *lockedBuffer) String() string {
 	return l.b.String()
 }
 
-// 每个请求结束时计入统计，并在 debug 级别输出一行；日志里不能出现密码。
+// Mỗi yêu cầu khi kết thúc được tính vào thống kê và ghi một dòng ở mức debug; log không được xuất hiện mật khẩu.
 func TestRequestLog(t *testing.T) {
 	var logs lockedBuffer
 	old := slog.Default()
@@ -521,7 +521,7 @@ func TestRequestLog(t *testing.T) {
 	get(t, "http://alice:wrong@"+addr)
 	get(t, "socks5://alice-ip-2001-db8-2--1:secret-pw@"+addr)
 
-	// 转发在客户端关闭连接后才结束，统计是异步更新的
+	// Việc chuyển tiếp chỉ kết thúc sau khi client đóng kết nối, thống kê được cập nhật bất đồng bộ
 	deadline := time.Now().Add(3 * time.Second)
 	var s Stats
 	for {
@@ -532,16 +532,16 @@ func TestRequestLog(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if s.Count[kindOK] != 2 || s.Count[kindAuth] != 1 || s.Count[kindRejected] != 1 || s.Active != 0 || s.Up == 0 || s.Down == 0 {
-		t.Fatalf("统计不对: %+v", s)
+		t.Fatalf("Thống kê không đúng: %+v", s)
 	}
 
 	out := logs.String()
 	if strings.Contains(out, "secret-pw") {
-		t.Fatalf("日志里出现了密码:\n%s", out)
+		t.Fatalf("Mật khẩu xuất hiện trong log:\n%s", out)
 	}
 	for _, want := range []string{"proto=socks5 ", "user=alice-session-z", "dst=[2001:db8:ffff::1]:80", "src=2001:db8:1:", "proto=http ", "result=auth", "result=rejected"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("日志缺少 %q:\n%s", want, out)
+			t.Errorf("Log thiếu %q:\n%s", want, out)
 		}
 	}
 }

@@ -1,13 +1,13 @@
 #!/bin/sh
-# 检查某个 routed 前缀是否已经可用：用前缀内的地址经 he-ipv6-pool 访问 api64.ipify.org，
-# 返回的出口地址等于该地址即视为可用（去程和回程都通）。适合在 HE 新分配前缀后定时运行。
+# Kiểm tra xem một tiền tố routed đã sẵn sàng chưa: dùng địa chỉ trong tiền tố truy cập api64.ipify.org qua he-ipv6-pool,
+# nếu địa chỉ đầu ra trả về bằng địa chỉ đó thì coi là sẵn sàng (cả chiều đi và chiều về đều thông). Phù hợp để chạy định kỳ sau khi HE cấp tiền tố mới.
 #
-# 用法：check-prefix.sh <前缀内的测试地址>    例如 check-prefix.sh 2001:db8:abcd::1
-# 地址必须写成压缩的规范形式（与 api64.ipify.org 返回的格式一致），并且所在前缀已写进配置的 prefixes。
-# 可用环境变量覆盖：BIN、CONF、SOCKS、PROXY_USER、PROXY_PASS、LOG。
-# 退出码：0 可用，1 不可用。he-ipv6-pool 没有在运行时会临时启动，检查完再停掉。
+# Cách dùng: check-prefix.sh <địa chỉ kiểm thử trong tiền tố>    ví dụ check-prefix.sh 2001:db8:abcd::1
+# Địa chỉ phải viết dạng chuẩn nén (khớp định dạng api64.ipify.org trả về), và tiền tố chứa nó đã được ghi vào prefixes trong cấu hình.
+# Có thể ghi đè bằng biến môi trường: BIN, CONF, SOCKS, PROXY_USER, PROXY_PASS, LOG.
+# Mã thoát: 0 sẵn sàng, 1 không sẵn sàng. Nếu he-ipv6-pool chưa chạy sẽ tạm khởi động, kiểm tra xong thì dừng.
 set -u
-ADDR=${1:?用法: $0 <前缀内的测试地址>}
+ADDR=${1:?Cách dùng: $0 <địa chỉ kiểm thử trong tiền tố>}
 DIR=$(cd "$(dirname "$0")" && pwd)
 BIN=${BIN:-$DIR/he-ipv6-pool}
 CONF=${CONF:-$DIR/config.json}
@@ -31,5 +31,5 @@ if [ "$got" = "$ADDR" ]; then
 	echo "$ts READY $ADDR" | tee -a "$LOG"
 	exit 0
 fi
-echo "$ts NOT-READY $ADDR (出口: ${got:-无响应})" | tee -a "$LOG"
+echo "$ts NOT-READY $ADDR (đầu ra: ${got:-không phản hồi})" | tee -a "$LOG"
 exit 1

@@ -14,16 +14,16 @@ import (
 	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
-// failKind 是请求结果的分类，统计、日志和 SOCKS5 应答码共用。
+// failKind là phân loại kết quả yêu cầu, dùng chung cho thống kê, log và mã phản hồi SOCKS5.
 type failKind int
 
 const (
 	kindOK       failKind = iota
-	kindAuth              // 用户名或密码错误
-	kindRejected          // 用户名后缀不合法，或者指定的出口地址不在池内
-	kindNoIPv6            // 目标没有 IPv6 地址，或者 DNS 解析失败
-	kindRefused           // 目标拒绝连接
-	kindTimeout           // 连接目标超时
+	kindAuth              // sai tên người dùng hoặc mật khẩu
+	kindRejected          // hậu tố tên người dùng không hợp lệ, hoặc địa chỉ đầu ra chỉ định không nằm trong pool
+	kindNoIPv6            // đích không có địa chỉ IPv6, hoặc phân giải DNS thất bại
+	kindRefused           // đích từ chối kết nối
+	kindTimeout           // kết nối tới đích quá thời gian
 	kindOther
 	numKinds
 )
@@ -42,7 +42,7 @@ func classify(err error) failKind {
 		return kindRejected
 	case errors.Is(err, tunnel.ErrNoIPv6):
 		return kindNoIPv6
-	// gonet 把 tcpip 错误转成了纯文本，只能按文本匹配
+	// gonet chuyển lỗi tcpip thành văn bản thuần, chỉ có thể khớp theo văn bản
 	case strings.Contains(err.Error(), "refused"):
 		return kindRefused
 	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "timed out"):
@@ -51,14 +51,14 @@ func classify(err error) failKind {
 	return kindOther
 }
 
-// Stats 是代理启动以来的累计统计。
+// Stats là thống kê lũy kế từ khi proxy khởi động.
 type Stats struct {
-	Count    [numKinds]uint64 // 按结果分类的请求数
-	Active   int64            // 当前正在转发的连接数
-	Up, Down uint64           // 客户端发往目标、目标发回客户端的字节数
+	Count    [numKinds]uint64 // số yêu cầu theo phân loại kết quả
+	Active   int64            // số kết nối đang được chuyển tiếp
+	Up, Down uint64           // số byte client gửi tới đích, đích gửi trả client
 }
 
-// Requests 返回请求总数。
+// Requests trả về tổng số yêu cầu.
 func (s Stats) Requests() uint64 {
 	var n uint64
 	for _, c := range s.Count {
@@ -67,7 +67,7 @@ func (s Stats) Requests() uint64 {
 	return n
 }
 
-// Sub 返回 s 相对 prev 的增量；Active 是当前值，不做减法。
+// Sub trả về mức tăng của s so với prev; Active là giá trị hiện tại, không trừ đi.
 func (s Stats) Sub(prev Stats) Stats {
 	for k := range s.Count {
 		s.Count[k] -= prev.Count[k]
@@ -77,7 +77,7 @@ func (s Stats) Sub(prev Stats) Stats {
 	return s
 }
 
-// Attrs 返回用于 slog 的键值对，只列出非零的分类。
+// Attrs trả về các cặp khóa-giá trị dùng cho slog, chỉ liệt kê các phân loại khác 0.
 func (s Stats) Attrs() []any {
 	a := []any{"requests", s.Requests()}
 	for k, n := range s.Count {
@@ -107,7 +107,7 @@ type stats struct {
 	up, down atomic.Uint64
 }
 
-// Stats 返回累计统计的快照。
+// Stats trả về ảnh chụp thống kê lũy kế.
 func (p *Proxy) Stats() Stats {
 	var s Stats
 	for k := range s.Count {
@@ -118,14 +118,14 @@ func (p *Proxy) Stats() Stats {
 	return s
 }
 
-// request 记录一次代理请求。客户端提交了认证信息（或者无需认证）之后才产生，
-// 握手阶段的协议错误（例如端口扫描）不计入。
+// request ghi lại một yêu cầu proxy. Chỉ được tạo sau khi client gửi thông tin xác thực (hoặc không cần xác thực),
+// lỗi giao thức ở giai đoạn bắt tay (ví dụ quét cổng) không được tính.
 type request struct {
-	proto    string // socks5、socks5-udp、http-connect、http
+	proto    string // socks5, socks5-udp, http-connect, http
 	client   string
-	user     string // 完整用户名（含后缀），不记录密码
+	user     string // tên người dùng đầy đủ (gồm hậu tố), không ghi mật khẩu
 	dst      string
-	src      netip.Addr // 实际使用的出口地址
+	src      netip.Addr // địa chỉ đầu ra thực tế được dùng
 	start    time.Time
 	up, down int64
 }
@@ -134,7 +134,7 @@ func newRequest(proto, client string) *request {
 	return &request{proto: proto, client: client, start: time.Now()}
 }
 
-// finish 计入统计，并在 debug 级别输出一行。
+// finish tính vào thống kê và ghi một dòng ở mức debug.
 func (p *Proxy) finish(r *request, err error) {
 	k := classify(err)
 	p.stats.count[k].Add(1)
@@ -149,13 +149,13 @@ func (p *Proxy) finish(r *request, err error) {
 	}
 	attrs = append(attrs, "dur", time.Since(r.start).Round(time.Millisecond), "up", r.up, "down", r.down)
 	if err != nil {
-		slog.Debug("请求失败", append(attrs, "result", k.String(), "err", err)...)
+		slog.Debug("Yêu cầu thất bại", append(attrs, "result", k.String(), "err", err)...)
 		return
 	}
-	slog.Debug("请求完成", attrs...)
+	slog.Debug("Yêu cầu hoàn tất", attrs...)
 }
 
-// active 在转发期间计入活跃连接数，返回的函数在转发结束时调用。
+// active tính vào số kết nối đang hoạt động trong thời gian chuyển tiếp, hàm trả về được gọi khi chuyển tiếp kết thúc.
 func (p *Proxy) active() func() {
 	p.stats.active.Add(1)
 	return func() { p.stats.active.Add(-1) }
@@ -166,7 +166,7 @@ func localAddr(c net.Conn) netip.Addr {
 	return ap.Addr()
 }
 
-// countConn 统计上游连接的读写字节数，用于 HTTP 普通转发的流量统计。
+// countConn đếm số byte đọc/ghi của kết nối upstream, dùng cho thống kê lưu lượng chuyển tiếp HTTP thông thường.
 type countConn struct {
 	net.Conn
 	up, down *atomic.Int64

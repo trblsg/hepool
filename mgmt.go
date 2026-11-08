@@ -33,36 +33,36 @@ var (
 	unitPath    = "/etc/systemd/system/" + serviceName + ".service"
 )
 
-// mgmtFlags 是 install 和 config 共用的参数。
+// mgmtFlags là các tham số dùng chung cho install và config.
 type mgmtFlags struct {
 	server, prefixes, local, listen, user, pass string
 	mtu                                         int
 }
 
 func (f *mgmtFlags) register(fs *flag.FlagSet) {
-	fs.StringVar(&f.server, "server", "", "HE 隧道详情页的 Server IPv4 Address")
-	fs.StringVar(&f.prefixes, "prefix", "", "Routed 前缀，多个用逗号分隔，例如 2001:db8:1::/64,2001:db8:abcd::/48")
-	fs.StringVar(&f.local, "local", "", "本地绑定的 IPv4，1:1 NAT 的云主机留空")
-	fs.IntVar(&f.mtu, "mtu", 1480, "隧道 MTU，与 HE 后台一致")
-	fs.StringVar(&f.listen, "listen", "", "代理监听地址（SOCKS5 和 HTTP 共用），默认 :随机高位端口")
-	fs.StringVar(&f.user, "user", "", "代理用户名，默认随机生成")
-	fs.StringVar(&f.pass, "pass", "", "代理密码，默认随机生成")
+	fs.StringVar(&f.server, "server", "", "Server IPv4 Address trên trang chi tiết tunnel HE")
+	fs.StringVar(&f.prefixes, "prefix", "", "Tiền tố Routed, nhiều tiền tố phân tách bằng dấu phẩy, ví dụ 2001:db8:1::/64,2001:db8:abcd::/48")
+	fs.StringVar(&f.local, "local", "", "IPv4 ràng buộc cục bộ, máy chủ cloud dùng 1:1 NAT để trống")
+	fs.IntVar(&f.mtu, "mtu", 1480, "MTU tunnel, khớp với bảng điều khiển HE")
+	fs.StringVar(&f.listen, "listen", "", "Địa chỉ lắng nghe proxy (SOCKS5 và HTTP dùng chung), mặc định :cổng cao ngẫu nhiên")
+	fs.StringVar(&f.user, "user", "", "Tên người dùng proxy, mặc định tạo ngẫu nhiên")
+	fs.StringVar(&f.pass, "pass", "", "Mật khẩu proxy, mặc định tạo ngẫu nhiên")
 }
 
-// setFlags 返回命令行里显式给出的参数名。
+// setFlags trả về tên các tham số được chỉ định rõ ràng trên dòng lệnh.
 func setFlags(fs *flag.FlagSet) map[string]bool {
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	return set
 }
 
-// apply 把命令行里显式给出的参数写进 cfg，没给的保持原值。
-// 管理命令只维护一个用户：只改用户名或只改密码时，另一项沿用原值。
+// apply ghi các tham số được chỉ định rõ ràng trên dòng lệnh vào cfg, tham số không được chỉ định giữ nguyên giá trị cũ.
+// Lệnh quản trị chỉ duy trì một người dùng: khi chỉ đổi tên người dùng hoặc chỉ đổi mật khẩu, mục còn lại giữ nguyên giá trị cũ.
 func (f *mgmtFlags) apply(cfg *config, set map[string]bool) error {
 	if set["server"] {
 		a, err := netip.ParseAddr(f.server)
 		if err != nil || !a.Is4() {
-			return fmt.Errorf("-server 必须是 IPv4 地址，得到 %q", f.server)
+			return fmt.Errorf("-server phải là địa chỉ IPv4, nhận được %q", f.server)
 		}
 		cfg.ServerIPv4 = a
 	}
@@ -71,7 +71,7 @@ func (f *mgmtFlags) apply(cfg *config, set map[string]bool) error {
 		for _, s := range strings.Split(f.prefixes, ",") {
 			p, err := netip.ParsePrefix(strings.TrimSpace(s))
 			if err != nil || !p.Addr().Is6() || p.Addr().Is4In6() {
-				return fmt.Errorf("-prefix 不是 IPv6 前缀: %q", s)
+				return fmt.Errorf("-prefix không phải tiền tố IPv6: %q", s)
 			}
 			cfg.Prefixes = append(cfg.Prefixes, p.Masked())
 		}
@@ -81,7 +81,7 @@ func (f *mgmtFlags) apply(cfg *config, set map[string]bool) error {
 		if f.local != "" {
 			a, err := netip.ParseAddr(f.local)
 			if err != nil || !a.Is4() {
-				return fmt.Errorf("-local 必须是 IPv4 地址，得到 %q", f.local)
+				return fmt.Errorf("-local phải là địa chỉ IPv4, nhận được %q", f.local)
 			}
 			cfg.LocalIPv4 = a
 		}
@@ -105,7 +105,7 @@ func (f *mgmtFlags) apply(cfg *config, set map[string]bool) error {
 	return nil
 }
 
-// fillDefaults 补齐没有配置的项：MTU 1480、随机高位端口、随机用户名和密码。
+// fillDefaults bổ sung các mục chưa cấu hình: MTU 1480, cổng cao ngẫu nhiên, tên người dùng và mật khẩu ngẫu nhiên.
 func fillDefaults(cfg *config) error {
 	if cfg.MTU == 0 {
 		cfg.MTU = 1480
@@ -119,17 +119,17 @@ func fillDefaults(cfg *config) error {
 	}
 	if user, pass := firstUser(cfg.Users); len(cfg.Users) <= 1 && (user == "" || pass == "") {
 		if user == "" {
-			user = "u" + strings.ToLower(crand.Text()[:9]) // base32 字母表，只有字母和数字
+			user = "u" + strings.ToLower(crand.Text()[:9]) // bảng chữ cái base32, chỉ gồm chữ cái và chữ số
 		}
 		if pass == "" {
-			pass = crand.Text() // 26 位 base32，约 130 bit
+			pass = crand.Text() // 26 ký tự base32, khoảng 130 bit
 		}
 		cfg.Users = map[string]string{user: pass}
 	}
 	return nil
 }
 
-// firstUser 返回配置里的一个用户，没有用户时返回空串。
+// firstUser trả về một người dùng trong cấu hình, trả về chuỗi rỗng khi không có người dùng.
 func firstUser(users map[string]string) (string, string) {
 	for u, p := range users {
 		return u, p
@@ -137,7 +137,7 @@ func firstUser(users map[string]string) (string, string) {
 	return "", ""
 }
 
-// randomPort 在 20000~59999 里挑一个本机空闲的 TCP 端口，跳过 x000、x001 这类整数端口。
+// randomPort chọn một cổng TCP trống trên máy trong khoảng 20000~59999, bỏ qua các cổng số tròn như x000, x001.
 func randomPort() (int, error) {
 	for range 100 {
 		p := 20000 + rand.IntN(40000)
@@ -151,21 +151,21 @@ func randomPort() (int, error) {
 		l.Close()
 		return p, nil
 	}
-	return 0, errors.New("找不到空闲端口，请用 -listen 指定")
+	return 0, errors.New("không tìm được cổng trống, hãy chỉ định bằng -listen")
 }
 
-// validate 检查管理命令生成或修改后的配置。
+// validate kiểm tra cấu hình được lệnh quản trị tạo hoặc sửa.
 func (c config) validate() error {
 	switch {
 	case !c.ServerIPv4.Is4():
-		return errors.New("缺少 -server（HE 隧道详情页的 Server IPv4 Address）")
+		return errors.New("thiếu -server (Server IPv4 Address trên trang chi tiết tunnel HE)")
 	case len(c.Prefixes) == 0:
-		return errors.New("缺少 -prefix（Routed /64、/48）")
+		return errors.New("thiếu -prefix (Routed /64, /48)")
 	case c.MTU < 1280 || c.MTU > 65535:
-		return fmt.Errorf("MTU %d 超出范围 [1280, 65535]", c.MTU)
+		return fmt.Errorf("MTU %d vượt ngoài phạm vi [1280, 65535]", c.MTU)
 	}
 	if _, port, err := net.SplitHostPort(c.Listen); err != nil || port == "" {
-		return fmt.Errorf("-listen 格式应为 [地址]:端口，得到 %q", c.Listen)
+		return fmt.Errorf("định dạng -listen phải là [địa chỉ]:cổng, nhận được %q", c.Listen)
 	}
 	for u, p := range c.Users {
 		bad := u == "" || p == "" || strings.ContainsAny(u+p, ":@/ ")
@@ -173,14 +173,14 @@ func (c config) validate() error {
 			bad = bad || strings.Contains(u, k)
 		}
 		if bad {
-			return fmt.Errorf("用户名 %q 或其密码不合法：不能为空、不能含 : @ / 空格，用户名不能含 -session-、-ip-、-ttl-、-cidr-", u)
+			return fmt.Errorf("tên người dùng %q hoặc mật khẩu không hợp lệ: không được để trống, không được chứa : @ / khoảng trắng; tên người dùng không được chứa -session-, -ip-, -ttl-, -cidr-", u)
 		}
 	}
 	return nil
 }
 
-// firewallRules 返回需要放行的 iptables INPUT 规则：HE 服务器发来的协议 41，
-// 以及代理端口（监听回环地址时不需要）。
+// firewallRules trả về các quy tắc INPUT của iptables cần cho phép: giao thức 41 từ máy chủ HE,
+// và cổng proxy (không cần khi lắng nghe địa chỉ loopback).
 func firewallRules(cfg config) [][]string {
 	rules := [][]string{{"-p", "41", "-s", cfg.ServerIPv4.String(), "-j", "ACCEPT"}}
 	host, port, err := net.SplitHostPort(cfg.Listen)
@@ -190,7 +190,7 @@ func firewallRules(cfg config) [][]string {
 	return rules
 }
 
-// unitFile 生成 systemd 服务：专用用户运行，只授予 CAP_NET_RAW，并开启常用的沙箱选项。
+// unitFile tạo dịch vụ systemd: chạy bằng người dùng chuyên dụng, chỉ cấp CAP_NET_RAW, và bật các tùy chọn sandbox thông dụng.
 func unitFile() string {
 	return fmt.Sprintf(`[Unit]
 Description=he-ipv6-pool: userspace HE 6in4 IPv6 proxy pool
@@ -223,13 +223,14 @@ WantedBy=multi-user.target
 `, serviceUser, installBin, installConf)
 }
 
-// ---- 管理命令：install / config / uninstall（Linux + systemd，需要 root） ----
+// ---- Lệnh quản trị: install / config / uninstall (Linux + systemd, cần root) ----
 
 func cmdInstall(args []string) error { return manage("install", args) }
 func cmdConfig(args []string) error  { return manage("config", args) }
 
-// manage 实现 install 和 config：读取已安装的配置，用命令行参数覆盖、补齐默认值后写回，
-// 同步防火墙并重启服务。install 还会安装二进制、创建用户和 systemd 服务；重复 install 等于升级。
+// manage triển khai install và config: đọc cấu hình đã cài, ghi đè bằng tham số dòng lệnh, bổ sung giá trị mặc định
+// rồi ghi lại, đồng bộ tường lửa và khởi động lại dịch vụ. install còn cài binary, tạo người dùng và dịch vụ systemd;
+// chạy lại install tương đương nâng cấp.
 func manage(name string, args []string) error {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	var f mgmtFlags
@@ -243,7 +244,7 @@ func manage(name string, args []string) error {
 	install := name == "install"
 	old, err := loadConfig(installConf)
 	if err != nil && (!install || !errors.Is(err, os.ErrNotExist)) {
-		return fmt.Errorf("读取 %s: %w", installConf, err)
+		return fmt.Errorf("đọc %s: %w", installConf, err)
 	}
 	set := setFlags(fs)
 	if !install && len(set) == 0 {
@@ -294,7 +295,7 @@ func cmdUninstall(args []string) error {
 		return err
 	}
 	if err := sh("systemctl", "disable", "--now", serviceName); err != nil {
-		fmt.Println("警告:", err)
+		fmt.Println("Cảnh báo:", err)
 	}
 	os.Remove(unitPath)
 	sh("systemctl", "daemon-reload")
@@ -306,24 +307,24 @@ func cmdUninstall(args []string) error {
 	}
 	if _, err := osuser.Lookup(serviceUser); err == nil {
 		if err := sh("userdel", serviceUser); err != nil {
-			fmt.Println("警告:", err)
+			fmt.Println("Cảnh báo:", err)
 		}
 	}
-	fmt.Printf("已卸载：服务 %s、%s、用户 %s 以及对应的 iptables 规则\n", serviceName, installDir, serviceUser)
+	fmt.Printf("Đã gỡ cài đặt: dịch vụ %s, %s, người dùng %s và các quy tắc iptables tương ứng\n", serviceName, installDir, serviceUser)
 	return nil
 }
 
 func requireRoot() error {
 	if runtime.GOOS != "linux" {
-		return errors.New("管理命令只支持 Linux（systemd），其他系统请直接运行 he-ipv6-pool -c config.json")
+		return errors.New("lệnh quản trị chỉ hỗ trợ Linux (systemd), trên hệ thống khác hãy chạy trực tiếp he-ipv6-pool -c config.json")
 	}
 	if os.Geteuid() != 0 {
-		return errors.New("需要 root 权限，请用 sudo 运行")
+		return errors.New("cần quyền root, hãy chạy bằng sudo")
 	}
 	return nil
 }
 
-// sh 运行外部命令，失败时把命令输出带进错误信息。
+// sh chạy lệnh bên ngoài, khi thất bại đưa đầu ra của lệnh vào thông tin lỗi.
 func sh(name string, args ...string) error {
 	out, err := exec.Command(name, args...).CombinedOutput()
 	if err != nil {
@@ -343,7 +344,7 @@ func ensureUser() error {
 	return sh("useradd", "--system", "--user-group", "--no-create-home", "--shell", shell, serviceUser)
 }
 
-// installBinary 把正在运行的二进制复制到安装目录；先写临时文件再 rename，服务运行中也能替换。
+// installBinary sao chép binary đang chạy vào thư mục cài đặt; ghi tệp tạm trước rồi rename, có thể thay thế khi dịch vụ đang chạy.
 func installBinary() error {
 	self, err := os.Executable()
 	if err != nil {
@@ -375,7 +376,7 @@ func installBinary() error {
 	return os.Rename(tmp, installBin)
 }
 
-// writeConfig 写入配置：root:hepool 0640，服务用户只能读，其他用户看不到密码。
+// writeConfig ghi cấu hình: root:hepool 0640, người dùng dịch vụ chỉ được đọc, người dùng khác không thấy mật khẩu.
 func writeConfig(cfg config) error {
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -400,11 +401,11 @@ func writeConfig(cfg config) error {
 	return os.Rename(tmp, installConf)
 }
 
-// updateFirewall 删除 old 对应的 iptables 规则、插入 cfg 对应的规则并持久化；
-// 零值 config 表示没有规则。规则失败只打印警告：防火墙也可能由别的工具管理。
+// updateFirewall xóa quy tắc iptables tương ứng với old, chèn quy tắc tương ứng với cfg và lưu lại;
+// config zero nghĩa là không có quy tắc. Quy tắc thất bại chỉ in cảnh báo: tường lửa cũng có thể do công cụ khác quản lý.
 func updateFirewall(old, cfg config) {
 	if _, err := exec.LookPath("iptables"); err != nil {
-		fmt.Println("提示: 没有 iptables，请自行放行协议 41 和代理端口")
+		fmt.Println("Gợi ý: không có iptables, hãy tự cho phép giao thức 41 và cổng proxy")
 		return
 	}
 	ipt := func(op string, rule []string) error { return sh("iptables", append([]string{op, "INPUT"}, rule...)...) }
@@ -419,20 +420,20 @@ func updateFirewall(old, cfg config) {
 				continue
 			}
 			if err := ipt("-I", r); err != nil {
-				fmt.Println("警告:", err)
+				fmt.Println("Cảnh báo:", err)
 			}
 		}
 	}
 	if _, err := exec.LookPath("netfilter-persistent"); err != nil {
-		fmt.Println("提示: 没有 netfilter-persistent，iptables 规则重启后会丢失，请自行持久化")
+		fmt.Println("Gợi ý: không có netfilter-persistent, quy tắc iptables sẽ mất sau khi khởi động lại, hãy tự lưu lại")
 		return
 	}
 	if err := sh("netfilter-persistent", "save"); err != nil {
-		fmt.Println("警告:", err)
+		fmt.Println("Cảnh báo:", err)
 	}
 }
 
-// restartService 重启服务并确认它确实跑起来了，失败时附上最近的日志。
+// restartService khởi động lại dịch vụ và xác nhận nó thực sự chạy, khi thất bại kèm log gần đây.
 func restartService() error {
 	for _, args := range [][]string{{"daemon-reload"}, {"enable", serviceName}, {"restart", serviceName}} {
 		if err := sh("systemctl", args...); err != nil {
@@ -442,7 +443,7 @@ func restartService() error {
 	time.Sleep(2 * time.Second)
 	if sh("systemctl", "is-active", "--quiet", serviceName) != nil {
 		out, _ := exec.Command("journalctl", "-u", serviceName, "-n", "20", "--no-pager").CombinedOutput()
-		return fmt.Errorf("服务没有正常运行，最近的日志:\n%s", out)
+		return fmt.Errorf("dịch vụ không chạy bình thường, log gần đây:\n%s", out)
 	}
 	return nil
 }
@@ -450,24 +451,24 @@ func restartService() error {
 func printInfo(cfg config) {
 	host, port, _ := net.SplitHostPort(cfg.Listen)
 	if host == "" {
-		host = "<服务器IP>"
+		host = "<IP máy chủ>"
 	}
 	addr := net.JoinHostPort(host, port)
 	user, pass := firstUser(cfg.Users)
-	fmt.Printf(`版本      %s
-配置文件  %s
-HE 服务器 %s
-前缀      %v
-监听      %s（SOCKS5 和 HTTP 共用）
-用户名    %s
-密码      %s
+	fmt.Printf(`Phiên bản     %s
+Tệp cấu hình  %s
+Máy chủ HE    %s
+Tiền tố       %v
+Lắng nghe     %s (SOCKS5 và HTTP dùng chung)
+Người dùng    %s
+Mật khẩu      %s
 
   curl -x socks5h://%[6]s:%[7]s@%[8]s https://api64.ipify.org
   curl -x http://%[6]s:%[7]s@%[8]s https://api64.ipify.org
 
-用户名后缀选择出口（可以组合）：-session-<id> 固定 IP，-ttl-<分钟> 固定 IP 的生存时间，
--cidr-64 按 /64 轮换；-ip-<地址> 指定 IP（地址里的 : 写成 -）。
-云厂商的安全组还需要放行协议 41 和 TCP %[9]s。
-日志：journalctl -u he-ipv6-pool -f（启动时会逐个检查前缀是否可用）
+Hậu tố tên người dùng để chọn đầu ra (có thể kết hợp): -session-<id> cố định IP, -ttl-<phút> thời gian sống của IP cố định,
+-cidr-64 luân chuyển theo /64; -ip-<địa chỉ> chỉ định IP (dấu : trong địa chỉ viết thành -).
+Security group của nhà cung cấp cloud cũng cần cho phép giao thức 41 và TCP %[9]s.
+Log: journalctl -u he-ipv6-pool -f (khi khởi động sẽ kiểm tra từng tiền tố xem có khả dụng không)
 `, versionString(), installConf, cfg.ServerIPv4, cfg.Prefixes, cfg.Listen, user, pass, addr, port)
 }

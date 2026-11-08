@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// Serve 在 l 上同时提供 SOCKS5 和 HTTP 代理：读取每个连接的首字节，0x05 交给 SOCKS5，
-// 其余（HTTP 请求总是以 ASCII 方法名开头）交给内部的 http.Server。直到 l 关闭才返回；
-// l 关闭之外的 Accept 错误（例如 EMFILE 之类的瞬时错误）只记录警告并继续服务。
+// Serve cung cấp đồng thời proxy SOCKS5 và HTTP trên l: đọc byte đầu tiên của mỗi kết nối, 0x05 giao cho SOCKS5,
+// phần còn lại (yêu cầu HTTP luôn bắt đầu bằng tên phương thức ASCII) giao cho http.Server nội bộ. Chỉ trả về khi l đóng;
+// các lỗi Accept ngoài việc l đóng (ví dụ lỗi tạm thời như EMFILE) chỉ ghi cảnh báo và tiếp tục phục vụ.
 func (p *Proxy) Serve(l net.Listener) error {
 	hl := &chanListener{ch: make(chan net.Conn), done: make(chan struct{}), addr: l.Addr()}
 	defer hl.Close()
@@ -24,15 +24,15 @@ func (p *Proxy) Serve(l net.Listener) error {
 			if errors.Is(err, net.ErrClosed) {
 				return err
 			}
-			slog.Warn("accept 失败", "err", err)
-			time.Sleep(100 * time.Millisecond) // ponytail: 固定 100ms 退避，需要时再改指数退避
+			slog.Warn("accept thất bại", "err", err)
+			time.Sleep(100 * time.Millisecond) // ponytail: backoff cố định 100ms, khi cần thì đổi sang backoff lũy thừa
 			continue
 		}
 		go p.dispatch(c, hl)
 	}
 }
 
-// dispatch 按首字节把连接分给 SOCKS5 或 HTTP。
+// dispatch phân loại kết nối cho SOCKS5 hoặc HTTP dựa trên byte đầu tiên.
 func (p *Proxy) dispatch(c net.Conn, hl *chanListener) {
 	var first [1]byte
 	c.SetReadDeadline(time.Now().Add(dialTimeout))
@@ -45,7 +45,7 @@ func (p *Proxy) dispatch(c net.Conn, hl *chanListener) {
 	if first[0] == socksVer {
 		defer pc.Close()
 		if err := p.socks5(pc); err != nil {
-			slog.Debug("socks5 握手失败", "client", c.RemoteAddr(), "err", err)
+			slog.Debug("bắt tay socks5 thất bại", "client", c.RemoteAddr(), "err", err)
 		}
 		return
 	}
@@ -56,7 +56,7 @@ func (p *Proxy) dispatch(c net.Conn, hl *chanListener) {
 	}
 }
 
-// peekConn 把分流时读走的首字节放回读取流。
+// peekConn đưa byte đầu tiên đã bị đọc khi phân loại trở lại luồng đọc.
 type peekConn struct {
 	net.Conn
 	r io.Reader
@@ -64,7 +64,7 @@ type peekConn struct {
 
 func (c *peekConn) Read(b []byte) (int, error) { return c.r.Read(b) }
 
-// CloseWrite 透传给底层连接：嵌入接口不会提升 CloseWrite，relay 的半关闭依赖它。
+// CloseWrite chuyển tiếp xuống kết nối bên dưới: interface nhúng không thăng cấp CloseWrite, việc bán đóng của relay phụ thuộc vào nó.
 func (c *peekConn) CloseWrite() error {
 	if cw, ok := c.Conn.(interface{ CloseWrite() error }); ok {
 		return cw.CloseWrite()
@@ -72,7 +72,7 @@ func (c *peekConn) CloseWrite() error {
 	return c.Conn.Close()
 }
 
-// chanListener 把分流出来的 HTTP 连接交给 http.Server。
+// chanListener giao các kết nối HTTP đã được phân loại cho http.Server.
 type chanListener struct {
 	ch   chan net.Conn
 	done chan struct{}

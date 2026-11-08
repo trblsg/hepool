@@ -16,7 +16,7 @@ import (
 	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
-// SOCKS5 常量（RFC 1928）。
+// Hằng số SOCKS5 (RFC 1928).
 const (
 	socksVer     = 5
 	cmdConnect   = 1
@@ -34,10 +34,10 @@ const (
 	repAtypUnsupported = 8
 )
 
-// socks5 处理一个 SOCKS5 连接。返回的错误只包括认证之前的握手错误；
-// 认证之后的结果都交给 finish 计入统计和日志。
+// socks5 xử lý một kết nối SOCKS5. Lỗi trả về chỉ gồm lỗi bắt tay trước khi xác thực;
+// kết quả sau xác thực đều giao cho finish để tính thống kê và ghi log.
 func (p *Proxy) socks5(c net.Conn) (err error) {
-	c.SetDeadline(time.Now().Add(dialTimeout)) // 握手超时，进入转发前清除
+	c.SetDeadline(time.Now().Add(dialTimeout)) // thời gian chờ bắt tay, xóa trước khi vào chuyển tiếp
 	rec := newRequest("socks5", c.RemoteAddr().String())
 	src, srcErr := p.socksAuth(c, rec)
 	switch {
@@ -48,7 +48,7 @@ func (p *Proxy) socks5(c net.Conn) (err error) {
 		return srcErr
 	}
 	defer func() { p.finish(rec, err); err = nil }()
-	// 请求：VER CMD RSV ATYP DST.ADDR DST.PORT
+	// Yêu cầu: VER CMD RSV ATYP DST.ADDR DST.PORT
 	var h [3]byte
 	if _, err := io.ReadFull(c, h[:]); err != nil {
 		return err
@@ -71,18 +71,18 @@ func (p *Proxy) socks5(c net.Conn) (err error) {
 		return p.socksAssociate(c, src, rec)
 	}
 	writeReply(c, repCmdUnsupported, netip.AddrPort{})
-	return fmt.Errorf("不支持的命令 %d", h[1])
+	return fmt.Errorf("lệnh không được hỗ trợ %d", h[1])
 }
 
-// socksAuth 完成方法协商和认证（RFC 1928 §3、RFC 1929），返回源地址，用户名记到 rec。
-// 返回 tunnel.ErrNotInPool 表示认证通过但显式 IP 无效，留到请求阶段回复 0x02。
+// socksAuth hoàn tất thương lượng phương thức và xác thực (RFC 1928 §3, RFC 1929), trả về địa chỉ nguồn, tên người dùng ghi vào rec.
+// Trả về tunnel.ErrNotInPool nghĩa là xác thực đạt nhưng IP chỉ định không hợp lệ, để đến giai đoạn yêu cầu mới trả lời 0x02.
 func (p *Proxy) socksAuth(c net.Conn, rec *request) (netip.Addr, error) {
 	var h [2]byte
 	if _, err := io.ReadFull(c, h[:]); err != nil {
 		return netip.Addr{}, err
 	}
 	if h[0] != socksVer {
-		return netip.Addr{}, fmt.Errorf("不支持的 SOCKS 版本 %d", h[0])
+		return netip.Addr{}, fmt.Errorf("phiên bản SOCKS không được hỗ trợ %d", h[0])
 	}
 	methods := make([]byte, h[1])
 	if _, err := io.ReadFull(c, methods); err != nil {
@@ -90,7 +90,7 @@ func (p *Proxy) socksAuth(c net.Conn, rec *request) (netip.Addr, error) {
 	}
 	switch {
 	case bytes.IndexByte(methods, 2) >= 0:
-		// 用户名密码认证；没有配置 users 时也优先用它，以便拿到用户名里的选择器
+		// Xác thực tên người dùng/mật khẩu; khi chưa cấu hình users cũng ưu tiên dùng nó để lấy bộ chọn trong tên người dùng
 		if _, err := c.Write([]byte{socksVer, 2}); err != nil {
 			return netip.Addr{}, err
 		}
@@ -113,10 +113,10 @@ func (p *Proxy) socksAuth(c net.Conn, rec *request) (netip.Addr, error) {
 		return netip.Addr{}, err
 	}
 	c.Write([]byte{socksVer, 0xff})
-	return netip.Addr{}, errors.New("没有可接受的认证方法")
+	return netip.Addr{}, errors.New("không có phương thức xác thực nào được chấp nhận")
 }
 
-// readUserPass 读取 RFC 1929 的 VER ULEN UNAME PLEN PASSWD。
+// readUserPass đọc VER ULEN UNAME PLEN PASSWD của RFC 1929.
 func readUserPass(r io.Reader) (user, pass string, err error) {
 	var b [2]byte
 	if _, err = io.ReadFull(r, b[:]); err != nil {
@@ -136,7 +136,7 @@ func readUserPass(r io.Reader) (user, pass string, err error) {
 	return string(u), string(pw), nil
 }
 
-// readAddr 读取 ATYP DST.ADDR DST.PORT，返回 host:port。
+// readAddr đọc ATYP DST.ADDR DST.PORT, trả về host:port.
 func readAddr(r io.Reader) (string, error) {
 	var atyp [1]byte
 	if _, err := io.ReadFull(r, atyp[:]); err != nil {
@@ -165,7 +165,7 @@ func readAddr(r io.Reader) (string, error) {
 		}
 		host = string(b)
 	default:
-		return "", fmt.Errorf("不支持的地址类型 %d", atyp[0])
+		return "", fmt.Errorf("kiểu địa chỉ không được hỗ trợ %d", atyp[0])
 	}
 	var port [2]byte
 	if _, err := io.ReadFull(r, port[:]); err != nil {
@@ -174,7 +174,7 @@ func readAddr(r io.Reader) (string, error) {
 	return net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(port[:])))), nil
 }
 
-// appendAddr 以 SOCKS5 格式（ATYP ADDR PORT）追加地址；零值写成 IPv4 0.0.0.0:0。
+// appendAddr thêm địa chỉ theo định dạng SOCKS5 (ATYP ADDR PORT); giá trị zero ghi thành IPv4 0.0.0.0:0.
 func appendAddr(b []byte, ap netip.AddrPort) []byte {
 	a := ap.Addr().Unmap()
 	switch {
@@ -195,7 +195,7 @@ func writeReply(w io.Writer, rep byte, bind netip.AddrPort) error {
 	return err
 }
 
-// dialReply 把拨号错误映射成 SOCKS5 应答码。
+// dialReply ánh xạ lỗi quay số thành mã phản hồi SOCKS5.
 func dialReply(err error) byte {
 	switch classify(err) {
 	case kindRejected:
@@ -228,8 +228,8 @@ func (p *Proxy) socksConnect(c net.Conn, src netip.Addr, rec *request) error {
 	return nil
 }
 
-// socksAssociate 处理 UDP ASSOCIATE（RFC 1928 §7）：本地 UDP socket 与客户端通信，
-// 隧道侧 UDP socket 以 src 为源地址与目标通信，控制连接断开时一并关闭。
+// socksAssociate xử lý UDP ASSOCIATE (RFC 1928 §7): socket UDP cục bộ giao tiếp với client,
+// socket UDP phía tunnel dùng src làm địa chỉ nguồn để giao tiếp với đích, đóng cùng lúc khi kết nối điều khiển ngắt.
 func (p *Proxy) socksAssociate(c net.Conn, src netip.Addr, rec *request) error {
 	if !src.IsValid() {
 		src = p.Tunnel.RandomAddr()
@@ -241,7 +241,7 @@ func (p *Proxy) socksAssociate(c net.Conn, src netip.Addr, rec *request) error {
 		return err
 	}
 	defer out.Close()
-	// 绑定在控制连接的本地地址上，这样监听 0.0.0.0 时也能回复一个有效地址
+	// Liên kết với địa chỉ cục bộ của kết nối điều khiển, để khi lắng nghe 0.0.0.0 vẫn trả về được một địa chỉ hợp lệ
 	in, err := net.ListenUDP("udp", &net.UDPAddr{IP: c.LocalAddr().(*net.TCPAddr).IP})
 	if err != nil {
 		writeReply(c, repFail, netip.AddrPort{})
@@ -254,11 +254,11 @@ func (p *Proxy) socksAssociate(c net.Conn, src netip.Addr, rec *request) error {
 	c.SetDeadline(time.Time{})
 
 	clientIP := c.RemoteAddr().(*net.TCPAddr).AddrPort().Addr().Unmap()
-	var client atomic.Pointer[net.UDPAddr] // 客户端最近一次发包的地址
+	var client atomic.Pointer[net.UDPAddr] // địa chỉ client gửi gói gần nhất
 	var up, down atomic.Int64
 	defer p.active()()
 
-	go func() { // 目标 → 客户端
+	go func() { // đích → client
 		buf := make([]byte, 65535)
 		for {
 			n, from, err := out.ReadFrom(buf)
@@ -272,7 +272,7 @@ func (p *Proxy) socksAssociate(c net.Conn, src netip.Addr, rec *request) error {
 			}
 		}
 	}()
-	go func() { // 客户端 → 目标
+	go func() { // client → đích
 		buf := make([]byte, 65535)
 		for {
 			n, from, err := in.ReadFromUDP(buf)
@@ -280,14 +280,14 @@ func (p *Proxy) socksAssociate(c net.Conn, src netip.Addr, rec *request) error {
 				return
 			}
 			if from.AddrPort().Addr().Unmap() != clientIP || n < 4 || buf[2] != 0 {
-				continue // 只接受控制连接所属的客户端；不支持分片
+				continue // chỉ chấp nhận client thuộc kết nối điều khiển; không hỗ trợ phân mảnh
 			}
 			r := bytes.NewReader(buf[3:n])
 			dst, err := readAddr(r)
 			if err != nil {
 				continue
 			}
-			// ponytail: 域名目标每个包都解析一次，需要时再加缓存
+			// ponytail: đích dạng tên miền được phân giải lại mỗi gói, khi cần thì thêm cache
 			ap, err := tunnel.Resolve(context.Background(), dst)
 			if err != nil {
 				continue
@@ -297,7 +297,7 @@ func (p *Proxy) socksAssociate(c net.Conn, src netip.Addr, rec *request) error {
 			up.Add(int64(r.Len()))
 		}
 	}()
-	io.Copy(io.Discard, c) // 阻塞到控制连接断开
+	io.Copy(io.Discard, c) // chặn cho đến khi kết nối điều khiển ngắt
 	rec.up, rec.down = up.Load(), down.Load()
 	return nil
 }

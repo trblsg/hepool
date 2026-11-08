@@ -1,8 +1,8 @@
-# 测试、交叉编译并发布到 GitHub Release，同时推送多架构 Docker 镜像到 ghcr.io。两种发版方式：
-#   1. 推送标签：git tag v0.1.0 && git push origin v0.1.0
-#   2. 手动触发：Actions 页面选 release → Run workflow → 填版本号；或者 gh workflow run release.yml -f version=v0.1.0
-#      会在所选分支的最新提交上创建标签
-# 版本号格式 vX.Y.Z，带后缀（如 v0.2.0-rc1）的发布为预发布版本。
+# Kiểm thử, biên dịch chéo và phát hành lên GitHub Release, đồng thời đẩy image Docker đa kiến trúc lên ghcr.io. Hai cách phát hành:
+#   1. Đẩy tag: git tag v0.1.0 && git push origin v0.1.0
+#   2. Kích hoạt thủ công: trang Actions chọn release → Run workflow → điền số phiên bản; hoặc gh workflow run release.yml -f version=v0.1.0
+#      sẽ tạo tag trên commit mới nhất của nhánh đã chọn
+# Định dạng số phiên bản vX.Y.Z, bản phát hành có hậu tố (như v0.2.0-rc1) là bản tiền phát hành.
 name: release
 
 on:
@@ -11,14 +11,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "版本号，例如 v0.1.0"
+        description: "Số phiên bản, ví dụ v0.1.0"
         required: true
 
 permissions:
   contents: write
 
 env:
-  # 通过环境变量传给脚本，不直接拼进 run，避免输入里的特殊字符被当成命令执行
+  # Truyền cho script qua biến môi trường, không ghép trực tiếp vào run, tránh ký tự đặc biệt trong input bị coi là lệnh để thực thi
   TAG: ${{ inputs.version || github.ref_name }}
 
 jobs:
@@ -29,15 +29,15 @@ jobs:
       - name: check version
         run: |
           if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
-            echo "::error::版本号格式应为 vX.Y.Z 或 vX.Y.Z-rc1，得到 $TAG"; exit 1
+            echo "::error::Định dạng số phiên bản phải là vX.Y.Z hoặc vX.Y.Z-rc1, nhận được $TAG"; exit 1
           fi
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-            echo "::error::标签 $TAG 已存在"; exit 1
+            echo "::error::Tag $TAG đã tồn tại"; exit 1
           fi
       - uses: actions/setup-go@v7
         with:
-          # 用 1.25 系列最新补丁版编译，带上标准库的安全修复；go.mod 里的 1.25.5 只是最低版本。
-          # gVisor 依赖运行时内部实现，升级 Go 大版本前要先升级 gVisor
+          # Biên dịch bằng bản vá mới nhất dòng 1.25, kèm bản vá bảo mật của thư viện chuẩn; 1.25.5 trong go.mod chỉ là phiên bản tối thiểu.
+          # gVisor phụ thuộc vào triển khai nội bộ của runtime, trước khi nâng phiên bản lớn của Go phải nâng gVisor trước
           go-version: "1.25"
           check-latest: true
       - run: go vet ./... && go test -race -count=1 ./...
@@ -57,8 +57,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  # 镜像发布放在同一个工作流里：手动触发时标签由 GITHUB_TOKEN 创建，不会再触发别的工作流；
-  # needs 保证测试通过、版本号校验通过后才推送
+  # Phát hành image đặt trong cùng workflow: khi kích hoạt thủ công, tag do GITHUB_TOKEN tạo sẽ không kích hoạt workflow khác;
+  # needs đảm bảo chỉ đẩy sau khi kiểm thử đạt và xác thực số phiên bản đạt
   docker:
     needs: release
     runs-on: ubuntu-latest
@@ -78,7 +78,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           flavor: latest=false
-          # v1.2.3 → 1.2.3、1.2；正式版额外打 latest，预发布版只打完整版本号
+          # v1.2.3 → 1.2.3, 1.2; bản chính thức gắn thêm latest, bản tiền phát hành chỉ gắn số phiên bản đầy đủ
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
@@ -91,7 +91,7 @@ jobs:
           build-args: VERSION=${{ env.TAG }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      # GHCR 新建的包默认私有。用 API 把包改成公开，失败不影响发布（可到 Package settings 手动改）
+      # Gói mới tạo trên GHCR mặc định là riêng tư. Dùng API để đổi gói thành công khai, thất bại không ảnh hưởng phát hành (có thể đổi thủ công trong Package settings)
       - name: make package public
         continue-on-error: true
         env:
@@ -100,8 +100,8 @@ jobs:
           pkg="${GITHUB_REPOSITORY#*/}"
           for i in 1 2 3 4 5; do
             if gh api --method PATCH "/user/packages/container/${pkg%/}" -f visibility=public >/dev/null 2>&1; then
-              echo "已将 ${pkg} 设为公开"; exit 0
+              echo "Đã đặt ${pkg} thành công khai"; exit 0
             fi
             sleep 5
           done
-          echo "::warning::无法自动设为公开，请到 https://github.com/users/${GITHUB_REPOSITORY_OWNER}/packages/container/${pkg%/}/settings 手动修改"
+          echo "::warning::Không thể tự động đặt thành công khai, vui lòng vào https://github.com/users/${GITHUB_REPOSITORY_OWNER}/packages/container/${pkg%/}/settings để sửa thủ công"

@@ -13,9 +13,9 @@ import (
 	"github.com/wsyqhh/he-ipv6-pool/tunnel"
 )
 
-// ServeHTTP 实现 HTTP 代理：CONNECT 隧道，以及 absolute-URI 形式的普通 http:// 请求转发。
+// ServeHTTP triển khai proxy HTTP: tunnel CONNECT, và chuyển tiếp các yêu cầu http:// thông thường dạng absolute-URI.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// 借用标准库的 Basic 解析：把 Proxy-Authorization 当作 Authorization
+	// Mượn cách phân tích Basic của thư viện chuẩn: coi Proxy-Authorization như Authorization
 	user, pass, _ := (&http.Request{Header: http.Header{"Authorization": r.Header.Values("Proxy-Authorization")}}).BasicAuth()
 	rec := newRequest("http", r.RemoteAddr)
 	rec.user, rec.dst = user, r.Host
@@ -23,15 +23,15 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, errAuth):
 		w.Header().Set("Proxy-Authenticate", `Basic realm="he-ipv6-pool"`)
-		http.Error(w, "需要代理认证", http.StatusProxyAuthRequired)
+		http.Error(w, "Cần xác thực proxy", http.StatusProxyAuthRequired)
 	case err != nil:
 		http.Error(w, err.Error(), http.StatusForbidden)
 	case r.Method == http.MethodConnect:
 		rec.proto = "http-connect"
 		err = p.httpConnect(w, r, src, rec)
 	case !r.URL.IsAbs():
-		err = errors.New("不是 absolute-URI 形式的代理请求")
-		http.Error(w, "这是代理服务器，请求需要使用 absolute-URI", http.StatusBadRequest)
+		err = errors.New("không phải yêu cầu proxy dạng absolute-URI")
+		http.Error(w, "Đây là máy chủ proxy, yêu cầu cần dùng dạng absolute-URI", http.StatusBadRequest)
 	default:
 		err = p.forward(w, r, src, rec)
 	}
@@ -57,7 +57,7 @@ func (p *Proxy) httpConnect(w http.ResponseWriter, r *http.Request, src netip.Ad
 	if _, err := io.WriteString(c, "HTTP/1.1 200 Connection established\r\n\r\n"); err != nil {
 		return err
 	}
-	// 客户端可能在收到 200 之前就发了数据，已被 bufio 读走的部分先转给上游
+	// Client có thể đã gửi dữ liệu trước khi nhận 200, phần đã bị bufio đọc mất trước tiên chuyển cho upstream
 	var early int64
 	if n := brw.Reader.Buffered(); n > 0 {
 		b, _ := brw.Reader.Peek(n)
@@ -72,13 +72,13 @@ func (p *Proxy) httpConnect(w http.ResponseWriter, r *http.Request, src netip.Ad
 	return nil
 }
 
-// forward 转发普通 http:// 请求。每个请求新建上游连接（DisableKeepAlives），
-// 避免复用以其他源地址建立的连接。
+// forward chuyển tiếp các yêu cầu http:// thông thường. Mỗi yêu cầu tạo kết nối upstream mới (DisableKeepAlives),
+// tránh tái sử dụng kết nối được thiết lập với địa chỉ nguồn khác.
 func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, src netip.Addr, rec *request) error {
 	var up, down atomic.Int64
 	var ferr error
 	rp := &httputil.ReverseProxy{
-		// 请求本身就是 absolute-URI，无需改写；不调用 SetXForwarded，不暴露客户端 IP
+		// Bản thân yêu cầu đã là absolute-URI, không cần viết lại; không gọi SetXForwarded, không lộ IP của client
 		Rewrite: func(*httputil.ProxyRequest) {},
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -102,7 +102,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, src netip.Addr, 
 	return ferr
 }
 
-// dialStatus 把拨号错误映射成 HTTP 状态码。
+// dialStatus ánh xạ lỗi quay số thành mã trạng thái HTTP.
 func dialStatus(err error) int {
 	if errors.Is(err, tunnel.ErrNotInPool) {
 		return http.StatusForbidden

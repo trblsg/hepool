@@ -6,24 +6,24 @@ import (
 	"time"
 )
 
-// sessionIdle：不带 -ttl- 的有状态会话（带 -cidr-）闲置这么久后才会被清理。
+// sessionIdle: phiên có trạng thái không kèm -ttl- (có -cidr-) chỉ bị dọn sau khi nhàn rỗi ngần này.
 const sessionIdle = 24 * time.Hour
 
-// sessions 记录带 -ttl- 或 -cidr- 的会话选中的地址，零值可用；进程重启后清空。
+// sessions ghi lại địa chỉ mà các phiên có -ttl- hoặc -cidr- đã chọn, giá trị zero dùng được; xóa sạch sau khi tiến trình khởi động lại.
 type sessions struct {
 	mu      sync.Mutex
 	m       map[string]session
-	sweepAt int // 表增长到这个大小时清理一次过期会话，均摊 O(1)
+	sweepAt int // bảng tăng tới kích thước này thì dọn phiên hết hạn một lần, khấu hao O(1)
 }
 
 type session struct {
 	addr    netip.Addr
 	expires time.Time
-	idle    bool // 没有 ttl：每次使用都把过期时间顺延 sessionIdle
+	idle    bool // không có ttl: mỗi lần dùng đều gia hạn thêm sessionIdle
 }
 
-// get 返回会话 key 的地址：未过期时复用，否则用 pick 选新地址。ttl 从第一次使用开始计时，
-// 期间的使用不会延长它；ttl 为 0 表示闲置 sessionIdle 后才过期。
+// get trả về địa chỉ của phiên key: dùng lại nếu chưa hết hạn, ngược lại chọn địa chỉ mới bằng pick. ttl tính từ lần dùng đầu tiên,
+// việc sử dụng trong thời gian đó không kéo dài nó; ttl bằng 0 nghĩa là chỉ hết hạn sau khi nhàn rỗi sessionIdle.
 func (s *sessions) get(key string, ttl time.Duration, pick func() netip.Addr) netip.Addr {
 	now := time.Now()
 	s.mu.Lock()

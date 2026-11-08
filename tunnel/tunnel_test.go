@@ -33,8 +33,8 @@ func ctxTimeout(t *testing.T) context.Context {
 	return ctx
 }
 
-// pair 用两个 UDP socket 模拟 6in4 链路：local 是被测隧道，remote 扮演互联网上的主机。
-// peerConn 是 local 眼中 peer（HE 服务器）的 socket。
+// pair dùng hai UDP socket mô phỏng liên kết 6in4: local là tunnel được kiểm thử, remote đóng vai một máy chủ trên Internet.
+// peerConn là socket mà local nhìn thấy của peer (máy chủ HE).
 func pair(t *testing.T) (local, remote *Tunnel, peerConn net.PacketConn) {
 	t.Helper()
 	a, b := listenUDP(t), listenUDP(t)
@@ -80,7 +80,7 @@ func TestDialTCP(t *testing.T) {
 		}
 		got := netip.MustParseAddrPort(string(b)).Addr()
 		if (src.IsValid() && got != src) || !localPrefix.Contains(got) {
-			t.Fatalf("对端看到的源地址 %s（指定 %v，前缀 %s）", got, src, localPrefix)
+			t.Fatalf("Địa chỉ nguồn mà phía đối diện thấy %s (chỉ định %v, tiền tố %s)", got, src, localPrefix)
 		}
 	}
 }
@@ -119,7 +119,7 @@ func TestDialUDP(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := netip.MustParseAddrPort(string(buf[:n])).Addr(); got != src {
-		t.Fatalf("对端看到的源地址 %s，期望 %s", got, src)
+		t.Fatalf("Địa chỉ nguồn mà phía đối diện thấy %s, mong đợi %s", got, src)
 	}
 }
 
@@ -127,41 +127,41 @@ func TestErrors(t *testing.T) {
 	local, _, _ := pair(t)
 	outside := netip.MustParseAddr("2001:db8:2::1")
 	if _, err := local.Dial(ctxTimeout(t), outside, "tcp", "[2001:db8:ffff::1]:7"); !errors.Is(err, ErrNotInPool) {
-		t.Fatalf("池外源地址: err = %v", err)
+		t.Fatalf("Địa chỉ nguồn ngoài pool: err = %v", err)
 	}
 	if _, err := local.ListenUDP(netip.AddrPortFrom(outside, 0)); !errors.Is(err, ErrNotInPool) {
-		t.Fatalf("ListenUDP 池外地址: err = %v", err)
+		t.Fatalf("ListenUDP địa chỉ ngoài pool: err = %v", err)
 	}
 	if _, err := local.Dial(ctxTimeout(t), netip.Addr{}, "tcp", "192.0.2.1:80"); !errors.Is(err, ErrNoIPv6) {
-		t.Fatalf("IPv4 目标: err = %v", err)
+		t.Fatalf("Đích IPv4: err = %v", err)
 	}
 	if _, err := NewWithConn(Config{Prefixes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}}, listenUDP(t), nil); err == nil {
-		t.Fatal("IPv4 前缀应当报错")
+		t.Fatal("Tiền tố IPv4 phải báo lỗi")
 	}
 	if _, err := NewWithConn(Config{Prefixes: []netip.Prefix{localPrefix}, MTU: 1000}, listenUDP(t), nil); err == nil {
-		t.Fatal("MTU < 1280 应当报错")
+		t.Fatal("MTU < 1280 phải báo lỗi")
 	}
 	unsupported := &net.UnixAddr{Name: "x", Net: "unixgram"}
 	if _, err := NewWithConn(Config{Prefixes: []netip.Prefix{localPrefix}}, listenUDP(t), unsupported); err == nil {
-		t.Fatal("peer 为不支持的地址类型应当报错")
+		t.Fatal("peer có kiểu địa chỉ không được hỗ trợ phải báo lỗi")
 	}
 }
 
-// Resolve 在域名查询失败时必须保留原始错误：既能用 errors.Is(err, ErrNoIPv6) 判断
-// “没有 IPv6 地址”，也能用 errors.Is(err, context.Canceled) 之类判断具体原因。
+// Resolve phải giữ nguyên lỗi gốc khi tra cứu tên miền thất bại: vừa có thể dùng errors.Is(err, ErrNoIPv6) để xác định
+// "không có địa chỉ IPv6", vừa có thể dùng errors.Is(err, context.Canceled) v.v. để xác định nguyên nhân cụ thể.
 func TestResolveDNSErrorCause(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := Resolve(ctx, "example.invalid:80")
 	if !errors.Is(err, ErrNoIPv6) || !errors.Is(err, context.Canceled) {
-		t.Fatalf("err = %v，期望同时包裹 ErrNoIPv6 与 context.Canceled", err)
+		t.Fatalf("err = %v, mong đợi bọc đồng thời ErrNoIPv6 và context.Canceled", err)
 	}
 }
 
-// 内核 NIC 开启 GRO 时会把连续的内层 TCP/UDP 分段合并成超过隧道 MTU 的超级包，
-// 合并前内核已逐段校验过校验和，但合并后不会重算内层校验和字段（可能残留某一
-// 分段的旧值）。不超过 MTU 的包必须按常规规则校验；超过 MTU 的包只能是 GRO
-// 产物，应当放行，即使校验和字段本身是错的。
+// Khi NIC của kernel bật GRO, các phân đoạn TCP/UDP liên tiếp ở tầng trong được gộp thành siêu gói vượt quá MTU của tunnel;
+// trước khi gộp kernel đã kiểm tra checksum từng phân đoạn, nhưng sau khi gộp không tính lại trường checksum của gói trong
+// (có thể còn sót giá trị cũ của một phân đoạn). Gói không vượt quá MTU phải được kiểm tra theo quy tắc thông thường; gói vượt
+// quá MTU chỉ có thể là sản phẩm của GRO, phải cho qua, dù bản thân trường checksum sai.
 func TestOversizedPacketSkipsChecksum(t *testing.T) {
 	local, _, peerConn := pair(t)
 	ln, err := local.ListenUDP(netip.MustParseAddrPort("[2001:db8:1::1]:9"))
@@ -172,12 +172,12 @@ func TestOversizedPacketSkipsChecksum(t *testing.T) {
 
 	src, dst := netip.MustParseAddr("2001:db8:ffff::9"), netip.MustParseAddr("2001:db8:1::1")
 	srcPort, dstPort := uint16(5353), uint16(9)
-	wrongChecksum := uint16(0x1234) // 故意写错且非零，模拟 GRO 合并后残留的旧校验和
+	wrongChecksum := uint16(0x1234) // cố ý viết sai và khác 0, mô phỏng checksum cũ còn sót sau khi GRO gộp
 	put16 := func(b []byte, v uint16) { b[0], b[1] = byte(v>>8), byte(v) }
 
-	// 手工拼一个 IPv6 + UDP 包：pkt[0] 是 version，pkt[4:6] 是 payload length，
-	// pkt[6]/pkt[7] 是 next header(UDP=17)/hop limit，接着是 16 字节源地址、
-	// 16 字节目的地址，再是 UDP 头（src port/dst port/length/checksum）和数据。
+	// Tự ghép một gói IPv6 + UDP: pkt[0] là version, pkt[4:6] là payload length,
+	// pkt[6]/pkt[7] là next header(UDP=17)/hop limit, tiếp theo là 16 byte địa chỉ nguồn,
+	// 16 byte địa chỉ đích, rồi header UDP (src port/dst port/length/checksum) và dữ liệu.
 	packet := func(data []byte) []byte {
 		pkt := make([]byte, 40+8+len(data))
 		udpLen := uint16(8 + len(data))
@@ -205,37 +205,37 @@ func TestOversizedPacketSkipsChecksum(t *testing.T) {
 	buf := make([]byte, 2200)
 	checksumErrors := local.stack.Stats().UDP.ChecksumErrors
 
-	// 小包（未超过 MTU）：错误的校验和必须按常规规则被拒收，不能收到数据。
-	small := fill(100) // 40 + 8 + 100 = 148 字节，远小于 MTU 1480
+	// Gói nhỏ (không vượt MTU): checksum sai phải bị từ chối theo quy tắc thông thường, không được nhận dữ liệu.
+	small := fill(100) // 40 + 8 + 100 = 148 byte, nhỏ hơn nhiều so với MTU 1480
 	before := checksumErrors.Value()
 	peerConn.WriteTo(packet(small), local.pc.LocalAddr())
 	ln.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
 	if _, _, err := ln.ReadFrom(buf); err == nil {
-		t.Fatal("校验和错误的小包（未超过 MTU）竟然被当作正常数据收到了")
+		t.Fatal("Gói nhỏ có checksum sai (không vượt MTU) lại được nhận như dữ liệu bình thường")
 	}
 	if checksumErrors.Value() == before {
-		t.Fatal("UDP.ChecksumErrors 应该增加")
+		t.Fatal("UDP.ChecksumErrors phải tăng")
 	}
 
-	// 大包（超过 MTU）：只能是 GRO 合并产物，必须放行，哪怕校验和字段是错的。
-	big := fill(2000) // 40 + 8 + 2000 = 2048 字节，超过 MTU 1480
+	// Gói lớn (vượt MTU): chỉ có thể là sản phẩm của GRO, phải cho qua, dù trường checksum sai.
+	big := fill(2000) // 40 + 8 + 2000 = 2048 byte, vượt MTU 1480
 	peerConn.WriteTo(packet(big), local.pc.LocalAddr())
 	ln.SetReadDeadline(time.Now().Add(2 * time.Second))
 	n, _, err := ln.ReadFrom(buf)
 	if err != nil {
-		t.Fatalf("超过 MTU 的包应被视为 GRO 产物放行: %v", err)
+		t.Fatalf("Gói vượt MTU phải được coi là sản phẩm của GRO và cho qua: %v", err)
 	}
 	if !bytes.Equal(buf[:n], big) {
-		t.Fatal("收到的 payload 与发出的数据不一致")
+		t.Fatal("Payload nhận được không khớp với dữ liệu đã gửi")
 	}
 }
 
-// 只有来自 peer、且目的地址在池内的 6in4 包才会被注入协议栈。
+// Chỉ các gói 6in4 đến từ peer và có địa chỉ đích nằm trong pool mới được đưa vào ngăn xếp giao thức.
 func TestDropForeign(t *testing.T) {
 	local, _, peerConn := pair(t)
 	attacker := listenUDP(t)
 	packet := func(dst string) []byte {
-		pkt := make([]byte, 40) // 最小 IPv6 包：Next Header = 59（No Next Header），无负载
+		pkt := make([]byte, 40) // gói IPv6 tối thiểu: Next Header = 59 (No Next Header), không có payload
 		pkt[0], pkt[6], pkt[7] = 0x60, 59, 64
 		s, d := netip.MustParseAddr("2001:db8:ffff::9").As16(), netip.MustParseAddr(dst).As16()
 		copy(pkt[8:24], s[:])
@@ -249,20 +249,20 @@ func TestDropForeign(t *testing.T) {
 	peerConn.WriteTo(packet("2001:db8:2::1"), local.pc.LocalAddr())
 	time.Sleep(200 * time.Millisecond)
 	if received.Value() != before {
-		t.Fatal("接受了非 peer 发来的包，或目的地址不在池内的包")
+		t.Fatal("Đã nhận gói không phải từ peer, hoặc gói có địa chỉ đích ngoài pool")
 	}
 
 	peerConn.WriteTo(packet("2001:db8:1::1"), local.pc.LocalAddr())
 	deadline := time.Now().Add(2 * time.Second)
 	for received.Value() == before {
 		if time.Now().After(deadline) {
-			t.Fatal("没有接受 peer 发来的合法包")
+			t.Fatal("Không nhận gói hợp lệ do peer gửi")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-// dropTo 丢掉目的地址在 drop 里的入站包，模拟 HE 没有把这个前缀路由到隧道。
+// dropTo loại bỏ các gói vào có địa chỉ đích trong drop, mô phỏng HE không định tuyến tiền tố này tới tunnel.
 type dropTo struct {
 	net.PacketConn
 	drop netip.Prefix
@@ -305,19 +305,19 @@ func TestCheck(t *testing.T) {
 		}
 	}()
 
-	// 443 有监听；444 没有监听，对端回 RST，同样说明来回都通
+	// 443 có lắng nghe; 444 không lắng nghe, phía đối diện trả RST, cũng chứng minh cả hai chiều đều thông
 	for _, port := range []uint16{443, 444} {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		res := local.Check(ctx, []netip.AddrPort{netip.AddrPortFrom(remoteAddr, port)})
 		cancel()
 		if len(res) != 2 || res[0].Prefix != routed || res[1].Prefix != unrouted {
-			t.Fatalf("端口 %d: 结果应当按前缀顺序排列: %+v", port, res)
+			t.Fatalf("Cổng %d: kết quả phải được sắp xếp theo thứ tự tiền tố: %+v", port, res)
 		}
 		if r := res[0]; r.Err != nil || !routed.Contains(r.Src) || r.RTT <= 0 {
-			t.Errorf("端口 %d: 已路由的前缀应当通过: %+v", port, r)
+			t.Errorf("Cổng %d: tiền tố đã được định tuyến phải đạt: %+v", port, r)
 		}
 		if r := res[1]; r.Err == nil || !unrouted.Contains(r.Src) {
-			t.Errorf("端口 %d: 收不到回包的前缀应当失败: %+v", port, r)
+			t.Errorf("Cổng %d: tiền tố không nhận được gói hồi đáp phải thất bại: %+v", port, r)
 		}
 	}
 }

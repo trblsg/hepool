@@ -18,10 +18,10 @@ func TestMgmtConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.ServerIPv4 != netip.MustParseAddr("216.66.80.26") || len(cfg.Prefixes) != 2 || cfg.Prefixes[1] != netip.MustParsePrefix("2001:db8:abcd::/48") {
-		t.Fatalf("apply 结果不对: %+v", cfg)
+		t.Fatalf("Kết quả apply không đúng: %+v", cfg)
 	}
 
-	// 默认值：随机高位端口、随机用户名和密码，并且能通过校验
+	// Giá trị mặc định: cổng cao ngẫu nhiên, tên người dùng và mật khẩu ngẫu nhiên, và phải vượt qua kiểm tra
 	if err := fillDefaults(&cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -30,34 +30,34 @@ func TestMgmtConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n, err := net.LookupPort("tcp", port); err != nil || host != "" || n < 20000 || n >= 60000 {
-		t.Fatalf("随机端口不对: %q", cfg.Listen)
+		t.Fatalf("Cổng ngẫu nhiên không đúng: %q", cfg.Listen)
 	}
 	user, pass := firstUser(cfg.Users)
 	if len(cfg.Users) != 1 || len(user) < 8 || len(pass) < 20 || strings.ContainsAny(user+pass, ":@/-") {
-		t.Fatalf("随机凭据不对: %q %q", user, pass)
+		t.Fatalf("Thông tin xác thực ngẫu nhiên không đúng: %q %q", user, pass)
 	}
 	if cfg.MTU != 1480 {
-		t.Fatalf("默认 MTU = %d", cfg.MTU)
+		t.Fatalf("MTU mặc định = %d", cfg.MTU)
 	}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
 	}
 
-	// 只改密码时保留用户名；只改端口时凭据不变
+	// Chỉ đổi mật khẩu thì giữ tên người dùng; chỉ đổi cổng thì thông tin xác thực không đổi
 	if err := (&mgmtFlags{pass: "NewPassw0rd"}).apply(&cfg, map[string]bool{"pass": true}); err != nil {
 		t.Fatal(err)
 	}
 	if u, p := firstUser(cfg.Users); u != user || p != "NewPassw0rd" {
-		t.Fatalf("只改密码后: %q %q", u, p)
+		t.Fatalf("Sau khi chỉ đổi mật khẩu: %q %q", u, p)
 	}
 	if err := (&mgmtFlags{listen: ":31234"}).apply(&cfg, map[string]bool{"listen": true}); err != nil {
 		t.Fatal(err)
 	}
 	if u, p := firstUser(cfg.Users); cfg.Listen != ":31234" || u != user || p != "NewPassw0rd" {
-		t.Fatalf("只改端口后: %+v", cfg)
+		t.Fatalf("Sau khi chỉ đổi cổng: %+v", cfg)
 	}
 
-	// 非法参数
+	// Tham số không hợp lệ
 	bad := []struct {
 		name string
 		f    mgmtFlags
@@ -70,19 +70,19 @@ func TestMgmtConfig(t *testing.T) {
 	for _, c := range bad {
 		var empty config
 		if err := c.f.apply(&empty, map[string]bool{c.set: true}); err == nil {
-			t.Errorf("%s 应当报错", c.name)
+			t.Errorf("%s phải báo lỗi", c.name)
 		}
 	}
-	// 会破坏 URL 或用户名选择器的用户名必须被拒绝
+	// Tên người dùng có thể phá vỡ URL hoặc bộ chọn phải bị từ chối
 	for _, u := range []string{"a:b", "a@b", "x-ip-y", "x-session-y", "x-cidr-y", "x-ttl-y"} {
 		c := cfg
 		c.Users = map[string]string{u: "pw"}
 		if c.validate() == nil {
-			t.Errorf("用户名 %q 应当被拒绝", u)
+			t.Errorf("Tên người dùng %q phải bị từ chối", u)
 		}
 	}
 	if (config{Listen: ":1", Users: map[string]string{"u": "p"}}).validate() == nil {
-		t.Error("缺少 server 和 prefix 时应当报错")
+		t.Error("Thiếu server và prefix phải báo lỗi")
 	}
 }
 
@@ -97,11 +97,11 @@ func TestFirewallRules(t *testing.T) {
 	}
 	cfg.Listen = "127.0.0.1:1080"
 	if got := firewallRules(cfg); len(got) != 1 {
-		t.Fatalf("监听回环地址时不应放行代理端口: %v", got)
+		t.Fatalf("Khi lắng nghe địa chỉ loopback không được mở cổng proxy: %v", got)
 	}
 }
 
-// 环境变量覆盖配置文件里的同名项；没有设置的变量保持原值。
+// Biến môi trường ghi đè mục cùng tên trong tệp cấu hình; biến không được đặt giữ nguyên giá trị cũ.
 func TestEnvConfig(t *testing.T) {
 	t.Setenv("HE_SERVER", "216.66.80.26")
 	t.Setenv("HE_PREFIXES", "2001:db8:1::/64,2001:db8:abcd::/48")
@@ -114,20 +114,20 @@ func TestEnvConfig(t *testing.T) {
 		t.Fatalf("applyEnv: used=%v err=%v", used, err)
 	}
 	if cfg.ServerIPv4 != netip.MustParseAddr("216.66.80.26") || len(cfg.Prefixes) != 2 || cfg.MTU != 1472 || cfg.Listen != ":24601" {
-		t.Fatalf("环境变量没有生效: %+v", cfg)
+		t.Fatalf("Biến môi trường không có hiệu lực: %+v", cfg)
 	}
 	if cfg.LocalIPv4 != netip.MustParseAddr("10.0.0.2") {
-		t.Fatalf("没有设置的 HE_LOCAL 不应改动原值: %s", cfg.LocalIPv4)
+		t.Fatalf("HE_LOCAL không được đặt không nên thay đổi giá trị cũ: %s", cfg.LocalIPv4)
 	}
 	if u, p := firstUser(cfg.Users); u != "alice" || p != "envpass" {
-		t.Fatalf("只设置 PROXY_PASS 时应保留用户名: %q %q", u, p)
+		t.Fatalf("Khi chỉ đặt PROXY_PASS phải giữ tên người dùng: %q %q", u, p)
 	}
 
 	for name, bad := range map[string]string{"HE_SERVER": "2001:db8::1", "HE_PREFIXES": "10.0.0.0/8", "HE_MTU": "abc"} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(name, bad)
 			if _, err := applyEnv(&config{}); err == nil || !strings.Contains(err.Error(), name) {
-				t.Errorf("%s=%q 应当报错并指出变量名，得到 %v", name, bad, err)
+				t.Errorf("%s=%q phải báo lỗi và chỉ ra tên biến, nhận được %v", name, bad, err)
 			}
 		})
 	}
@@ -138,7 +138,7 @@ func TestEnvConfigUnset(t *testing.T) {
 		os.Unsetenv(k)
 	}
 	if used, err := applyEnv(&config{}); used || err != nil {
-		t.Fatalf("没有环境变量时: used=%v err=%v", used, err)
+		t.Fatalf("Khi không có biến môi trường: used=%v err=%v", used, err)
 	}
 }
 
@@ -148,17 +148,17 @@ func TestSetupLog(t *testing.T) {
 
 	t.Setenv("LOG_LEVEL", "debug")
 	if err := setupLog(false); err != nil || !debugOn() {
-		t.Fatalf("LOG_LEVEL=debug 应当打开 debug: err=%v", err)
+		t.Fatalf("LOG_LEVEL=debug phải bật debug: err=%v", err)
 	}
 	t.Setenv("LOG_LEVEL", "warn")
 	if err := setupLog(true); err != nil || !debugOn() {
-		t.Fatalf("-v 应当优先: err=%v", err)
+		t.Fatalf("-v phải được ưu tiên: err=%v", err)
 	}
 	if err := setupLog(false); err != nil || debugOn() || slog.Default().Enabled(context.Background(), slog.LevelInfo) {
-		t.Fatalf("LOG_LEVEL=warn 时不应输出 info: err=%v", err)
+		t.Fatalf("LOG_LEVEL=warn không được xuất info: err=%v", err)
 	}
 	t.Setenv("LOG_LEVEL", "verbose")
 	if err := setupLog(false); err == nil || !strings.Contains(err.Error(), "LOG_LEVEL") {
-		t.Fatalf("无效的 LOG_LEVEL 应当报错: %v", err)
+		t.Fatalf("LOG_LEVEL không hợp lệ phải báo lỗi: %v", err)
 	}
 }
